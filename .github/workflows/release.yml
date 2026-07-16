@@ -9,11 +9,9 @@ jobs:
   release:
     uses: ParkerIndustries/workflows/.github/workflows/release.yml@v1
     with:
-      pypi-package-name: project-template # your PyPI/distribution name (matches pyproject [project].name)
+      pypi-package-name: integration-template # rename to your majordom-<protocol> dist name
       python-version: "3.12"
-      # If your stable branch is master (not main), or your dev branch differs:
-      # stable-branch: master
-      # dev-branch: develop
+      stable-branch: master
       # Override the QA matrix (defaults to the team standard):
       # python-versions: '["3.12", "3.13"]'
       # For compiled/Cython extensions, build a wheel per version (default is one

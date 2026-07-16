@@ -1,15 +1,18 @@
-# Rename `project-template` (PyPI/distribution name, hyphens) and the `project_template/`
-# package directory (import name, underscores) to your own — keep them matching so
-# poetry-core auto-detects the package. `pypi-package-name` in the release stub should
-# match the distribution name here.
+# Rename `integration-template` (PyPI/distribution name, hyphens) and the
+# `integration_template/` package directory (import name, underscores) to your own — by
+# convention `majordom-<protocol>` / `majordom_<protocol>` (e.g. majordom-homekit /
+# majordom_homekit). Keep them matching so poetry-core auto-detects the package, and update
+# `pypi-package-name` in the release stub + `--cov=` below to match.
 [project]
-name = "project-template"
+name = "integration-template"
 version = "0.1.0"
-description = ""
+description = "A MajorDom integration."
 authors = [{ name = "Mark Parker", email = "mark@parker-programs.com" }]
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "majordom-integration-sdk (>=0.1,<1.0)",
+]
 
 [dependency-groups]
 dev = [
@@ -17,16 +20,8 @@ dev = [
     "ty",             # type checker; swap for mypy/pyright by editing the `check` task below
     "ruff",
     "pip-audit",      # dependency vuln scan — gates release (not everyday CI); run locally with `poetry run pip-audit`
-    # Uncomment for published docs (see mkdocs.yml + docs/ + .github/workflows/docs.yml):
-    # "mkdocs-material[imaging]",
-    # "mkdocs-git-revision-date-localized-plugin",
-    # "mkdocs-llmstxt",
-    # Uncomment for compiled (Cython) extensions — see the setup.py note below:
-    # "cython",
-    # "setuptools",
     "pytest",
     "pytest-asyncio",
-    # "pytest-trio",
     "pytest-cov",
     "pytest-timeout",
     "pytest-repeat",
@@ -34,25 +29,10 @@ dev = [
     "pytest-profiling",
     "pytest-resource-usage",
     "coverage",
-    # Memory/leak + test-data tooling (pairs with pytest-benchmark/-resource-usage):
     "pympler",        # object memory introspection, leak hunting
     "psutil",         # process/system resource usage
     "faker",          # realistic fake data for tests
 ]
-
-# ── Compiled (Cython) extensions ─────────────────────────────────────────────
-# Pure-Python by default. If you need Cython, uncomment the cython/setuptools dev
-# deps above and add a setup.py that cythonizes your .pyx files, e.g.:
-#
-#   import glob
-#   from setuptools import Extension, setup
-#   from Cython.Build import cythonize
-#   ext = [Extension(p[:-4].replace("/", "."), [p]) for p in glob.glob("**/*.pyx", recursive=True)]
-#   setup(ext_modules=cythonize(ext, compiler_directives={"boundscheck": False}))
-#
-# Then `poetry run python setup.py build_ext --inplace` locally, and note that the
-# release build must run per Python version (compiled wheels are version-specific,
-# unlike the pure-Python py3-none-any default) — set that up in a custom release call.
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
@@ -60,17 +40,20 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 requires-poetry = ">=2.0"
-packages = [{ include = "project_template" }]
+packages = [{ include = "integration_template" }]
+
+# While majordom-integration-sdk is unpublished, develop against a local checkout:
+#   [tool.poetry.dependencies]
+#   majordom-integration-sdk = { path = "../integration-sdk", develop = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 pythonpath = ["."]
-# Surface each unique warning once (deprecations, etc.) without failing the run.
-# Use ["error"] to make warnings hard failures if you want to stay ahead of them.
 filterwarnings = ["once"]
-# Register custom markers here so pytest doesn't warn about unknown ones, e.g.:
+# Real-hardware suites are opt-in; register the marker and deselect by default with
+# `-m 'not real_iot_device'` in your CI if you add one.
 # markers = [
-#     "slow: long-running tests, deselect with -m 'not slow'",
+#     "real_iot_device: runs against a physical device on a self-hosted rig",
 # ]
 
 [tool.coverage.run]
@@ -123,7 +106,7 @@ echo "\nRunning ty:"
 poetry run ty check || code=1
 
 echo "\nRunning pytest:"
-poetry run pytest --cov=project_template --cov-report=xml || code=1
+poetry run pytest --cov=integration_template --cov-report=xml || code=1
 
 echo "\nRunning poetry build:"
 poetry build || code=1
@@ -136,8 +119,3 @@ ${ci:+git diff --exit-code}
 exit $code
 """
 args = [{ name = "ci", type = "boolean" }]
-
-# Only useful if you kept mkdocs.yml + docs/ (see the "Optional" note in the dev deps above).
-[tool.poe.tasks.docs]
-cmd = "poetry run mkdocs serve"
-help = "Serve docs locally with live-reload (requires the mkdocs-* dev deps uncommented)"
