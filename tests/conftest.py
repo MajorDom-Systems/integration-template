@@ -8,7 +8,6 @@ services), so tests can drive it exactly as the Hub would — without a running 
 """
 
 import pytest
-
 from majordom_sdk.testing import build_test_dependencies
 
 from integration_template import ExampleController

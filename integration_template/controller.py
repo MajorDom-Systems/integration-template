@@ -61,8 +61,8 @@ class ExampleController(AbstractController[Device, Parameter]):
         raise NotImplementedError
 
     async def fetch(self, device: Device) -> None:
-        # Refresh the device and its parameters, emitting DeviceParameterChangedEvents via
-        # self.dependencies.output.controller_did_receive_device_events(...).
+        # Refresh the device and its parameters, reporting changes via
+        # self.dependencies.output.controller_did_receive_device_changes(self, [...]).
         raise NotImplementedError
 
     async def send_command(self, command: DeviceCommand, device: Device, parameter: Parameter) -> None:
