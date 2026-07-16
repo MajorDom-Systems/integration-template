@@ -1,0 +1,143 @@
+# Rename `project-template` (PyPI/distribution name, hyphens) and the `project_template/`
+# package directory (import name, underscores) to your own — keep them matching so
+# poetry-core auto-detects the package. `pypi-package-name` in the release stub should
+# match the distribution name here.
+[project]
+name = "project-template"
+version = "0.1.0"
+description = ""
+authors = [{ name = "Mark Parker", email = "mark@parker-programs.com" }]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "poethepoet (>=0.36.0,<1.0.0)",
+    "ty",             # type checker; swap for mypy/pyright by editing the `check` task below
+    "ruff",
+    "pip-audit",      # dependency vuln scan — gates release (not everyday CI); run locally with `poetry run pip-audit`
+    # Uncomment for published docs (see mkdocs.yml + docs/ + .github/workflows/docs.yml):
+    # "mkdocs-material[imaging]",
+    # "mkdocs-git-revision-date-localized-plugin",
+    # "mkdocs-llmstxt",
+    # Uncomment for compiled (Cython) extensions — see the setup.py note below:
+    # "cython",
+    # "setuptools",
+    "pytest",
+    "pytest-asyncio",
+    # "pytest-trio",
+    "pytest-cov",
+    "pytest-timeout",
+    "pytest-repeat",
+    "pytest-benchmark",
+    "pytest-profiling",
+    "pytest-resource-usage",
+    "coverage",
+    # Memory/leak + test-data tooling (pairs with pytest-benchmark/-resource-usage):
+    "pympler",        # object memory introspection, leak hunting
+    "psutil",         # process/system resource usage
+    "faker",          # realistic fake data for tests
+]
+
+# ── Compiled (Cython) extensions ─────────────────────────────────────────────
+# Pure-Python by default. If you need Cython, uncomment the cython/setuptools dev
+# deps above and add a setup.py that cythonizes your .pyx files, e.g.:
+#
+#   import glob
+#   from setuptools import Extension, setup
+#   from Cython.Build import cythonize
+#   ext = [Extension(p[:-4].replace("/", "."), [p]) for p in glob.glob("**/*.pyx", recursive=True)]
+#   setup(ext_modules=cythonize(ext, compiler_directives={"boundscheck": False}))
+#
+# Then `poetry run python setup.py build_ext --inplace` locally, and note that the
+# release build must run per Python version (compiled wheels are version-specific,
+# unlike the pure-Python py3-none-any default) — set that up in a custom release call.
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+requires-poetry = ">=2.0"
+packages = [{ include = "project_template" }]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+# Surface each unique warning once (deprecations, etc.) without failing the run.
+# Use ["error"] to make warnings hard failures if you want to stay ahead of them.
+filterwarnings = ["once"]
+# Register custom markers here so pytest doesn't warn about unknown ones, e.g.:
+# markers = [
+#     "slow: long-running tests, deselect with -m 'not slow'",
+# ]
+
+[tool.coverage.run]
+omit = ["tests/*"]
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "F",   # pyflakes
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "I",   # isort
+]
+fixable = ["ALL"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+docstring-code-format = true
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["E402"]
+
+[tool.poe.tasks.install]
+shell = """
+poetry install
+echo '#!/bin/sh\npoetry run poe check' > .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+echo "Pre-commit hook installed."
+"""
+
+[tool.poe.tasks.check]
+shell = """
+code=0
+
+echo "\nRunning ruff lint:"
+poetry run ruff check --fix || code=1
+
+echo "\nRunning ruff format:"
+poetry run ruff format || code=1
+
+echo "\nRunning ty:"
+poetry run ty check || code=1
+
+echo "\nRunning pytest:"
+poetry run pytest --cov=project_template --cov-report=xml || code=1
+
+echo "\nRunning poetry build:"
+poetry build || code=1
+
+echo "\nRunning poetry check:"
+poetry check || code=1
+
+${ci:+git diff --exit-code}
+
+exit $code
+"""
+args = [{ name = "ci", type = "boolean" }]
+
+# Only useful if you kept mkdocs.yml + docs/ (see the "Optional" note in the dev deps above).
+[tool.poe.tasks.docs]
+cmd = "poetry run mkdocs serve"
+help = "Serve docs locally with live-reload (requires the mkdocs-* dev deps uncommented)"

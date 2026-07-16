@@ -1,0 +1,17 @@
+name: Publish Docs
+
+# Optional — delete this file (and mkdocs.yml + docs/) if this project doesn't publish docs.
+# Requires Settings -> Pages -> Source: Deploy from a branch -> gh-pages (created on first run).
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    uses: ParkerIndustries/workflows/.github/workflows/docs-publish.yml@v1
+    # with:
+    #   python-version: "3.12"
+    #   working-directory: "."

@@ -1,0 +1,36 @@
+site_name: project-template
+site_description: Short description of your package.
+repo_url: https://github.com/ParkerIndustries/project-template
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - navigation.instant
+    - navigation.top
+    - search.suggest
+
+nav:
+  - Home: index.md
+
+plugins:
+  - search
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: timeago
+  - llmstxt:
+      markdown_description: |
+        Short description of your package, written for an LLM reading llms.txt.
+      full_output: llms-full.txt
+      sections:
+        Home:
+          - index.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - toc:
+      permalink: true
