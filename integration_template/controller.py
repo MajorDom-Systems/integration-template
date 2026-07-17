@@ -1,8 +1,9 @@
 """A minimal MajorDom integration controller.
 
 This is a worked skeleton — replace the TODO bodies with real protocol calls. It shows the
-full lifecycle the Hub drives: discovery -> pairing -> commands -> teardown. See the full
-guide at https://docs.majordom.io/device-integration.
+full lifecycle the Hub drives: discovery -> pairing -> commands -> teardown.
+
+See the full guide at https://docs.majordom.io/device-integration.
 
 A Controller bridges one external protocol/platform into the MajorDom language. The Hub
 instantiates it with injected `Dependencies` and calls the methods below; the controller
@@ -13,9 +14,17 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from majordom_sdk.controller import AbstractController
-from majordom_sdk.schemas.command import DeviceCommand
-from majordom_sdk.schemas.device import Device, Discovery, Parameter, ProvidedCredentials
+from majordom_integration_sdk.controller import AbstractController
+from majordom_integration_sdk.schemas.command import DeviceCommand
+from majordom_integration_sdk.schemas.device import Device, Discovery, Parameter, ProvidedCredentials
+
+# Output methods to call (see the docs):
+# async def controller_did_receive_discovery(self, controller: AbstractController, discovery: Discovery): ...
+# async def controller_did_update_discovery(self, controller: AbstractController, discovery: Discovery): ...
+# async def controller_did_lose_discovery(self, controller: AbstractController, discovery_id: UUID): ...
+# async def controller_did_connect_device(self, controller: AbstractController, device_id: UUID): ...
+# async def controller_did_lose_device(self, controller: AbstractController, device_id: UUID): ...
+# async def controller_did_receive_events(self, controller: AbstractController, events: Iterable[Event]): ...
 
 
 class ExampleController(AbstractController[Device, Parameter]):
@@ -62,7 +71,7 @@ class ExampleController(AbstractController[Device, Parameter]):
 
     async def fetch(self, device: Device) -> None:
         # Refresh the device and its parameters, reporting changes via
-        # self.dependencies.output.controller_did_receive_device_changes(self, [...]).
+        # self.dependencies.output.controller_did_receive_events(self, [...]).
         raise NotImplementedError
 
     async def send_command(self, command: DeviceCommand, device: Device, parameter: Parameter) -> None:
