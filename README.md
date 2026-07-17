@@ -117,7 +117,16 @@ tick items as you implement them (and as the corresponding test in `tests/` goes
 - [ ] Paired devices going offline/coming back online *while the Hub is running* (not just on reboot) — set `device.available` accordingly (report `controller_did_lose_device`), and clear/set `last_error` to match
 - [ ] Graceful shutdown in `stop`, cancelling any running tasks, discovery stopped, all connections closed
 - [ ] Tests pass against a virtual/simulated device (`tests/test_controller.py`)
-- [ ] README fully filled in: delete the template-setup section above, complete **About this integration**, **Required harness**, and **Protocol stack (OSI)** with real content
+- [ ] README fully filled in: delete the template-setup section above, complete **About this integration**, **Required harness**, **Protocol stack (OSI)**, and **Notes** with real content
+
+### Notes
+
+<!-- EXAMPLE / optional — free text. Anything a reader should know that the checklist can't
+     capture. Delete this comment and write your own, or remove the section if unused. -->
+
+_e.g. "Hobby project, maintained best-effort." · "IP transport works; BLE pairing is not
+implemented yet." · "Help wanted: reliable re-pair after a bridge reboot." · known quirks,
+firmware versions tested against, limitations._
 
 ## Documentation
 
