@@ -50,11 +50,6 @@ packages = [{ include = "integration_template" }]
 asyncio_mode = "auto"
 pythonpath = ["."]
 filterwarnings = ["once"]
-# Real-hardware suites are opt-in; register the marker and deselect by default with
-# `-m 'not real_iot_device'` in your CI if you add one.
-# markers = [
-#     "real_iot_device: runs against a physical device on a self-hosted rig",
-# ]
 
 [tool.coverage.run]
 omit = ["tests/*"]

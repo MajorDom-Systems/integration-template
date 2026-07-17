@@ -70,6 +70,32 @@ teardown. It can also be run standalone (no Hub) via the SDK's dev runner while 
 - **Supported devices:** _…_
 - **Credentials needed to pair:** _none / code / secret / qr_
 
+### Required harness
+
+External things this integration needs to run, beyond `pip install` — declare them so a
+deployment knows what to provide. Keep only what applies:
+
+- **Hardware adapters:** _e.g. an 802.15.4 radio (SkyConnect / a Thread or Zigbee dongle), a
+  USB serial gateway …_ — the Hub assigns OS device paths through
+  `dependencies.hardware_interfaces` (e.g. `/dev/ttyACM0`).
+- **Third-party software services:** _e.g. an OpenThread Border Router (OTBR), a vendor
+  bridge/hub, an MQTT broker, a matter-server instance …_ — what must be running and reachable.
+- **OS / permissions:** _e.g. Bluetooth access, host networking, mDNS/SSDP on the LAN …_
+
+### Protocol stack (OSI)
+
+Map the stack this integration bridges, and mark **which layers are this repo's code** vs.
+provided by a library, the OS, or the harness above — it sets the scope of what the
+integration owns. Keep the rows that apply; example (Matter-over-Thread) shown, replace it:
+
+| OSI layer | Protocol | Implemented by |
+|-----------|----------|----------------|
+| Application (7) | _Matter clusters / data model_ | **this integration** (via `chip` lib) |
+| Session (5) | _CASE / PASE secure session_ | library |
+| Transport (4) | _UDP_ | OS |
+| Network (3) | _IPv6 · 6LoWPAN_ | OS · OTBR (harness) |
+| Data link / Physical (1–2) | _Thread · IEEE 802.15.4_ | radio adapter (harness) |
+
 ### Progress
 
 The canonical [Implementation Checklist](https://docs.majordom.io/device-integration) —
@@ -107,8 +133,8 @@ poetry install && poetry run poe install
 | `poe check --ci` | Same, plus `git diff --exit-code` |
 
 Work lands on `develop`; `master` is protected and released via **Actions → Release**.
-Tests drive the controller with the SDK's test doubles (`majordom_sdk.testing`) — see
-`tests/`. Add a `real_iot_device`-marked suite if you validate against hardware.
+Tests drive the controller with the SDK's test doubles (`majordom_integration_sdk.testing`)
+against a virtual/simulated device — see `tests/`.
 
 ## License
 

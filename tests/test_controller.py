@@ -9,8 +9,7 @@ protocol in-process (no real hardware, no network), so CI is deterministic. Add 
 for it in `conftest.py` and have the controller talk to it. Each test should then assert on
 **both sides**: what the controller reported back to the Hub (via `deps.output`) *and* what
 actually landed on the device (the virtual device observed the command / changed state) —
-don't just call the method and assume it worked. Keep a separate `real_iot_device`-marked
-suite for hardware if you have a rig.
+don't just call the method and assume it worked.
 
 Persistence is the Hub's job (see `conftest.py`): the fixtures seed the repository the way
 the Hub would, so assert on the controller's protocol behaviour and reports — not that the
@@ -23,7 +22,7 @@ implement the controller.)
 
 from majordom_integration_sdk.controller import AbstractController
 from majordom_integration_sdk.schemas.command import DeviceCommand
-from majordom_integration_sdk.schemas.device import Device, DeviceState, Discovery
+from majordom_integration_sdk.schemas.device import Device, Discovery
 from majordom_integration_sdk.schemas.parameter import ParameterState
 
 from integration_template import ExampleController
@@ -33,7 +32,7 @@ async def test_pairs_a_discovered_device(
     controller: ExampleController,
     deps: AbstractController.Dependencies,
     discovery: Discovery,
-    provisional_device: DeviceState,
+    provisional_device: Device,  # creates a device with discovery.id and saves it to the db
 ) -> None:
     # The Hub has already stored `provisional_device` (id == discovery.id) before this call.
     await controller.pair_device(discovery, credentials=None)
