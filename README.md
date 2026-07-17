@@ -60,6 +60,26 @@ The integration's entry point is a `Controller` (`integration_template/controlle
 the Hub instantiates and drives through its lifecycle: discovery → pairing → commands →
 teardown. It can also be run standalone (no Hub) via the SDK's dev runner while developing.
 
+## Documentation
+
+Full integration-author docs — the controller lifecycle, data models, storing data,
+discovery, and a worked example — live at **[docs.majordom.io](https://docs.majordom.io/device-integration)**.
+
+## Development
+
+```sh
+poetry install && poetry run poe install
+```
+
+| Task | Description |
+|------|-------------|
+| `poe check` | Full quality pipeline (ruff, ty, pytest, poetry build/check) |
+| `poe check --ci` | Same, plus `git diff --exit-code` |
+
+Work lands on `develop`; `master` is protected and released via **Actions → Release**.
+Tests drive the controller with the SDK's test doubles (`majordom_integration_sdk.testing`)
+against a virtual/simulated device — see `tests/`.
+
 ## About this integration
 
 <!-- Fill this in. It's your PR summary — keep the checklist current so a reviewer sees at
@@ -127,26 +147,6 @@ tick items as you implement them (and as the corresponding test in `tests/` goes
 _e.g. "Hobby project, maintained best-effort." · "IP transport works; BLE pairing is not
 implemented yet." · "Help wanted: reliable re-pair after a bridge reboot." · known quirks,
 firmware versions tested against, limitations._
-
-## Documentation
-
-Full integration-author docs — the controller lifecycle, data models, storing data,
-discovery, and a worked example — live at **[docs.majordom.io](https://docs.majordom.io/device-integration)**.
-
-## Development
-
-```sh
-poetry install && poetry run poe install
-```
-
-| Task | Description |
-|------|-------------|
-| `poe check` | Full quality pipeline (ruff, ty, pytest, poetry build/check) |
-| `poe check --ci` | Same, plus `git diff --exit-code` |
-
-Work lands on `develop`; `master` is protected and released via **Actions → Release**.
-Tests drive the controller with the SDK's test doubles (`majordom_integration_sdk.testing`)
-against a virtual/simulated device — see `tests/`.
 
 ## License
 
