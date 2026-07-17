@@ -12,24 +12,44 @@ actually landed on the device (the virtual device observed the command / changed
 don't just call the method and assume it worked. Keep a separate `real_iot_device`-marked
 suite for hardware if you have a rig.
 
+Persistence is the Hub's job (see `conftest.py`): the fixtures seed the repository the way
+the Hub would, so assert on the controller's protocol behaviour and reports — not that the
+integration created a device row.
+
 (The template's own CI excludes this file so the template repo stays green — see
 `.github/workflows/test.yml`. Your integration repo runs it in full, and it's red until you
 implement the controller.)
 """
 
+from majordom_integration_sdk.controller import AbstractController
 from majordom_integration_sdk.schemas.command import DeviceCommand
+from majordom_integration_sdk.schemas.device import Device, DeviceState, Discovery
+from majordom_integration_sdk.schemas.parameter import ParameterState
+
+from integration_template import ExampleController
 
 
-async def test_pairs_a_discovered_device(controller, deps, discovery):
+async def test_pairs_a_discovered_device(
+    controller: ExampleController,
+    deps: AbstractController.Dependencies,
+    discovery: Discovery,
+    provisional_device: DeviceState,
+) -> None:
+    # The Hub has already stored `provisional_device` (id == discovery.id) before this call.
     await controller.pair_device(discovery, credentials=None)
-    # TODO: verify pairing actually completed, both sides:
-    #   - Hub side: `discovery.id`'s device is in `deps.output.connected_devices`.
-    #   - Persistence: the device now exists via the injected repository
-    #     (`async with deps.make_device_repository() as repo: await repo.state(<id>)`).
-    #   - Device side: the virtual device registered the new session / accepted the credentials.
+    # TODO: verify pairing actually completed — the controller established the session and
+    #   reported back (it does not persist the device itself):
+    #   - Hub side: `discovery.id` is in `deps.output.connected_devices`.
+    #   - Device side: the virtual device accepted the credentials / opened a session.
+    #   - Parameters: if you map parameters during pairing, assert their initial states were
+    #     written via the repository (`repo.save_parameter_state`).
 
 
-async def test_fetches_state(controller, deps, device):
+async def test_fetches_state(
+    controller: ExampleController,
+    deps: AbstractController.Dependencies,
+    device: Device,
+) -> None:
     await controller.fetch(device)
     # TODO: verify the refresh reached the device and propagated back:
     #   - Set a known state on the virtual device first, then assert `deps.output.events`
@@ -37,8 +57,7 @@ async def test_fetches_state(controller, deps, device):
     #     or default values.
 
 
-async def test_sends_a_command(controller, device):
-    parameter = device.parameters[0]
+async def test_sends_a_command(controller: ExampleController, device: Device, parameter: ParameterState) -> None:
     command = DeviceCommand(device_id=device.id, parameter_id=parameter.id, value=False)
     await controller.send_command(command, device, parameter)
     # TODO: verify the command actually applied on the device, not just that the call
@@ -46,14 +65,14 @@ async def test_sends_a_command(controller, device):
     #   to `value` (read it back). A no-op that silently succeeds must fail this test.
 
 
-async def test_identifies(controller, device):
+async def test_identifies(controller: ExampleController, device: Device) -> None:
     await controller.identify(device)
     # TODO: assert the virtual device recorded an identify request (e.g. its identify counter
     #   incremented / the identify command was received).
 
 
-async def test_unpairs(controller, device):
+async def test_unpairs(controller: ExampleController, device: Device) -> None:
     await controller.unpair(device)
-    # TODO: verify removal took effect both sides:
-    #   - Persistence: the device is gone from the repository.
+    # TODO: verify removal took effect:
     #   - Device side: the virtual device saw the session torn down / was de-registered.
+    #   - Controller: the device is gone — no more connections or commands should be accepted.

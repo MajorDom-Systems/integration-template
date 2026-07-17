@@ -75,18 +75,20 @@ teardown. It can also be run standalone (no Hub) via the SDK's dev runner while 
 The canonical [Implementation Checklist](https://docs.majordom.io/device-integration) —
 tick items as you implement them (and as the corresponding test in `tests/` goes green):
 
-- [ ] Discovery service listeners fire when devices are found, and the controller calls `self.dependencies.output.controller_did_receive_discovery`
 - [ ] Discovery services registered via `self.dependencies.zeroconf_discovery_service`, `ssdp_discovery_service`, and/or `ble_discovery_service` as appropriate; cancel closures saved and called in `stop`
+- [ ] Discovery service listeners fire when devices are found, and the controller calls `self.dependencies.output.controller_did_receive_discovery`
 - [ ] Discovery of devices already paired to the Hub on reconnect, e.g. after a reboot (`self.dependencies.output.controller_did_connect_device` is called)
-- [ ] `start_pairing_window` is implemented if the protocol requires an explicit scan mode
-- [ ] Device pairing (`pair_device` is implemented, and validates the incoming `ProvidedCredentials.type` against `discovery.expected_credentials_options` before using it)
+- [ ] `start_pairing_window` is implemented but only if the protocol requires an explicit scan (like zigbee)
+- [ ] Device pairing 
 - [ ] Device schema is properly mapped: device info, parameter list, and each parameter's metadata are translated to MajorDom's domain model
 - [ ] Hub → Device control (`send_command` is implemented)
 - [ ] Device → Hub event subscription (`self.dependencies.output.controller_did_receive_events` is called on incoming events)
-- [ ] `identify`, `unpair`, and `fetch` are implemented
+- [ ] `identify` is implemented
+- [ ] `unpair` is implemented
+- [ ] `fetch` is implemented
 - [ ] Paired devices going offline/coming back online *while the Hub is running* (not just on reboot) — set `device.available` accordingly (report `controller_did_lose_device`), and clear/set `last_error` to match
-- [ ] Graceful shutdown in `stop`
-- [ ] Tests pass against a virtual/simulated device (`tests/test_controller.py`); add a `real_iot_device`-marked hardware suite if you have a rig
+- [ ] Graceful shutdown in `stop`, cancelling any running tasks, discovery stopped, all connections closed
+- [ ] Tests pass against a virtual/simulated device (`tests/test_controller.py`)
 
 ## Documentation
 
