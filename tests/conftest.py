@@ -36,6 +36,20 @@ def controller(deps) -> ExampleController:
     return ExampleController(deps)
 
 
+# A virtual / simulated device — a fake endpoint that speaks your protocol in-process (no
+# hardware, no network) so tests are deterministic and can assert what actually reached the
+# device. Stand one up here and have the controller talk to it (e.g. via a base URL / mock
+# transport injected through the controller). Tests then assert on both the controller's
+# reports (deps.output) and this object's observed state.
+#
+# @pytest.fixture
+# def virtual_device():
+#     dev = VirtualExampleDevice()  # your in-process fake
+#     dev.start()
+#     yield dev
+#     dev.stop()
+
+
 @pytest.fixture
 def discovery() -> Discovery:
     """A sample discovered-but-unpaired device."""
