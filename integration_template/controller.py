@@ -34,9 +34,7 @@ class ExampleController(AbstractController[Device, Parameter]):
         super().__init__(dependencies)
         self._discoveries: dict[UUID, Discovery] = {}
 
-    @property
-    def name(self) -> str:
-        return "Example"
+    name = "Example"
 
     @property
     def discoveries(self) -> dict[UUID, Discovery]:
