@@ -16,7 +16,16 @@ e.g. `integration-hue`), then:
   `integration_template/` directory, plus the `--cov=` and `packages` references in
   `pyproject.toml`.
 - Rename `ExampleController` and fill in `integration_template/controller.py` with real
-  protocol logic.
+  protocol logic. `tests/test_controller.py` is prefilled to fail until you do — work the
+  **Progress** checklist below and tick items off as your CI goes green.
+- In `.github/workflows/test.yml`, delete the `template-selfcheck` job and the `if:` guard
+  on the `test` job — they exist only to keep the *template* repo green and aren't wanted in
+  a real integration.
+- Fill in the **About this integration** section below (it doubles as your PR summary — a
+  reviewer reads the checklist to see what's actually implemented).
+
+> CI needs `majordom-integration-sdk` published to PyPI to install. While it's unpublished,
+> develop locally with the path-dependency block described above.
 
 **2. Install + pre-commit hook**
 ```sh
@@ -51,10 +60,36 @@ The integration's entry point is a `Controller` (`integration_template/controlle
 the Hub instantiates and drives through its lifecycle: discovery → pairing → commands →
 teardown. It can also be run standalone (no Hub) via the SDK's dev runner while developing.
 
+## About this integration
+
+<!-- Fill this in. It's your PR summary — keep the checklist current so a reviewer sees at
+     a glance what works. -->
+
+- **Protocol / platform:** _e.g. Philips Hue (Zigbee via a bridge)_
+- **Transport(s):** _wifi / ble / zigbee / …_
+- **Supported devices:** _…_
+- **Credentials needed to pair:** _none / code / secret / qr_
+
+### Progress
+
+Tick items as you implement them (and as the corresponding test in `tests/` goes green):
+
+- [ ] `discoveries` — surfaces unpaired devices (register a discovery service in `start`)
+- [ ] `pair_device` — pairs a discovery, reports `controller_did_connect_device`
+- [ ] Credentials — declares `expected_credentials_options`, validates supplied credentials
+- [ ] `fetch` — refreshes device + parameters, reports changes via `controller_did_receive_events`
+- [ ] `send_command` — applies a parameter change on the device
+- [ ] `identify` — makes the device blink/beep
+- [ ] `unpair` — removes the device cleanly
+- [ ] `start` / `stop` — starts services & reconciles paired devices / releases resources
+- [ ] Availability — reports `controller_did_lose_device` when a paired device drops
+- [ ] Tests — `tests/test_controller.py` filled in and passing (virtual/simulated device)
+- [ ] Real-hardware suite (optional) — `real_iot_device`-marked tests on a rig
+
 ## Documentation
 
 Full integration-author docs — the controller lifecycle, data models, storing data,
-discovery, and a worked example — live at **[docs.majordom.io](https://docs.majordom.io)**.
+discovery, and a worked example — live at **[docs.majordom.io](https://docs.majordom.io/device-integration)**.
 
 ## Development
 
