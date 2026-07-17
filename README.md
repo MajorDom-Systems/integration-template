@@ -72,8 +72,9 @@ teardown. It can also be run standalone (no Hub) via the SDK's dev runner while 
 
 ### Required harness
 
-External things this integration needs to run, beyond `pip install` — declare them so a
-deployment knows what to provide. Keep only what applies:
+<!-- EXAMPLE — replace with your integration's real requirements (delete rows that don't
+     apply). External things this integration needs to run, beyond `pip install`, so a
+     deployment knows what to provide. -->
 
 - **Hardware adapters:** _e.g. an 802.15.4 radio (SkyConnect / a Thread or Zigbee dongle), a
   USB serial gateway …_ — the Hub assigns OS device paths through
@@ -84,9 +85,10 @@ deployment knows what to provide. Keep only what applies:
 
 ### Protocol stack (OSI)
 
-Map the stack this integration bridges, and mark **which layers are this repo's code** vs.
-provided by a library, the OS, or the harness above — it sets the scope of what the
-integration owns. Keep the rows that apply; example (Matter-over-Thread) shown, replace it:
+<!-- EXAMPLE — the table below is a Matter-over-Thread illustration; replace every row with
+     your own stack. Map the stack this integration bridges and mark which layers are THIS
+     repo's code vs. provided by a library, the OS, or the harness above — it sets the scope
+     of what the integration owns. Keep only the rows that apply. -->
 
 | OSI layer | Protocol | Implemented by |
 |-----------|----------|----------------|
