@@ -43,8 +43,9 @@ git checkout -b develop && git push origin develop
 **General** → enable **Allow auto-merge**; **Branches** → protect `master` (require the
 `test / check` status, restrict push to `github-actions[bot]`) and `develop` (require
 `test / check`); **Environments** → create `release` (deployment branch `develop` only,
-required reviewer). Then configure PyPI trusted publishing for your package (Owner
-`MajorDom-Systems`, Workflow `release.yml`, Environment `release`).
+required reviewer). Then configure PyPI trusted publishing for your package (Owner = the
+GitHub user or org that owns **this** repo, Repository = this repo, Workflow `release.yml`,
+Environment `release`).
 
 The reusable CI/CD lives in [ParkerIndustries/workflows](https://github.com/ParkerIndustries/workflows).
 
