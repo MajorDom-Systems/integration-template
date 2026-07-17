@@ -117,6 +117,7 @@ tick items as you implement them (and as the corresponding test in `tests/` goes
 - [ ] Paired devices going offline/coming back online *while the Hub is running* (not just on reboot) — set `device.available` accordingly (report `controller_did_lose_device`), and clear/set `last_error` to match
 - [ ] Graceful shutdown in `stop`, cancelling any running tasks, discovery stopped, all connections closed
 - [ ] Tests pass against a virtual/simulated device (`tests/test_controller.py`)
+- [ ] README fully filled in: delete the template-setup section above, complete **About this integration**, **Required harness**, and **Protocol stack (OSI)** with real content
 
 ## Documentation
 
