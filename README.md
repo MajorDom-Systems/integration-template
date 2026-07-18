@@ -54,10 +54,15 @@ The reusable CI/CD lives in [ParkerIndustries/workflows](https://github.com/Park
 A [MajorDom](https://majordom.io) integration — bridges the Example protocol into the
 MajorDom language.
 
+Built for the **MajorDom Hub**, but it doesn't need it: this is a standalone, standardized
+library for the Example protocol that you can use on its own (see **Run it standalone** below).
 Built on the [MajorDom Integration SDK](https://github.com/MajorDom-Systems/integration-sdk).
-The integration's entry point is a `Controller` (`integration_template/controller.py`) that
-the Hub instantiates and drives through its lifecycle: discovery → pairing → commands →
-teardown. It can also be run standalone (no Hub) via the SDK's dev runner while developing.
+The integration's entry point is a `Controller` (`integration_template/controller.py`) that the
+Hub — or the SDK's dev runner — instantiates and drives through its lifecycle: discovery →
+pairing → commands → teardown.
+
+- **Other protocols:** browse the [MajorDom integrations](https://github.com/orgs/MajorDom-Systems/repositories?q=integration-).
+- **Create your own:** start from the [integration template](https://github.com/MajorDom-Systems/integration-template).
 
 ## Documentation
 
@@ -78,6 +83,48 @@ poetry install && poetry run poe install
 Work lands on `develop`; `master` is protected and released via **Actions → Release**.
 Tests drive the controller with the SDK's test doubles (`majordom_integration_sdk.testing`)
 against a virtual/simulated device — see `tests/`.
+
+## Run it standalone (without the Hub)
+
+This integration is a standalone library: it runs on its own via the SDK's dev runner, which
+wires real (network-live) discovery services, a file-backed device store, and a console output,
+then drives your controller through its lifecycle — no Hub required.
+
+```python
+# run.py
+import asyncio
+
+from majordom_integration_sdk.dev import run_controller
+from integration_template.controller import ExampleController  # your Controller
+
+# Starts discovery, watches for devices, logs discoveries/events. Ctrl-C to stop.
+# db_path persists paired devices across restarts; omit it for an in-memory store.
+asyncio.run(run_controller(ExampleController, db_path="devices.db"))
+```
+
+```sh
+poetry run python run.py
+```
+
+To pair, control, or fetch a device programmatically (instead of just watching), build the
+dependencies yourself and call the controller directly:
+
+```python
+import asyncio
+
+from majordom_integration_sdk.dev import build_dependencies
+from majordom_integration_sdk.schemas.device import ProvidedCredentials
+from integration_template.controller import ExampleController
+
+async def main():
+    deps = build_dependencies(integration=ExampleController.name, db_path="devices.db")
+    controller = ExampleController(deps)
+    await controller.start()
+    # ... await controller.pair_device(discovery, ProvidedCredentials(...)), send_command, fetch ...
+    await controller.stop()
+
+asyncio.run(main())
+```
 
 ## About this integration
 
