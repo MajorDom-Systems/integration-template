@@ -9,10 +9,26 @@ version = "0.1.0"
 description = "A MajorDom integration."
 authors = [{ name = "Mark Parker", email = "mark@parker-programs.com" }]
 readme = "README.md"
+# The template scaffold is Apache-2.0. Relicense your integration as you see fit — note
+# that linking a copyleft (GPL/AGPL) protocol library may constrain your choice.
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+keywords = ["majordom", "smart-home", "home-automation", "iot", "integration", "template", "scaffold"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Home Automation",
+    "Programming Language :: Python :: 3",
+]
 requires-python = ">=3.12"
 dependencies = [
     "majordom-integration-sdk (>=0.1,<1.0)",
 ]
+
+[project.urls]
+Homepage = "https://majordom.io"
+Documentation = "https://docs.majordom.io/device-integration"
+Repository = "https://github.com/MajorDom-Systems/integration-template"
 
 [dependency-groups]
 dev = [
