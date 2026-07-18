@@ -24,15 +24,10 @@ e.g. `integration-hue`), then:
 - Fill in the **About this integration** section below (it doubles as your PR summary — a
   reviewer reads the checklist to see what's actually implemented).
 
-> CI needs `majordom-integration-sdk` published to PyPI to install. While it's unpublished,
-> develop locally with the path-dependency block described above.
-
 **2. Install + pre-commit hook**
 ```sh
 pip install poetry poethepoet && poe install
 ```
-Until `majordom-integration-sdk` is published, develop against a local checkout by
-uncommenting the `[tool.poetry.dependencies]` path block in `pyproject.toml`.
 
 **3. Create the `develop` branch**
 ```sh

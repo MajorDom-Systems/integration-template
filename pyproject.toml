@@ -42,10 +42,6 @@ build-backend = "poetry.core.masonry.api"
 requires-poetry = ">=2.0"
 packages = [{ include = "integration_template" }]
 
-# While majordom-integration-sdk is unpublished, develop against a local checkout:
-#   [tool.poetry.dependencies]
-#   majordom-integration-sdk = { path = "../integration-sdk", develop = true }
-
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 pythonpath = ["."]
