@@ -81,45 +81,13 @@ against a virtual/simulated device — see `tests/`.
 
 ## Run it standalone (without the Hub)
 
-This integration is a standalone library: it runs on its own via the SDK's dev runner, which
-wires real (network-live) discovery services, a file-backed device store, and a console output,
-then drives your controller through its lifecycle — no Hub required.
+Your integration is a standalone library — import it into another app, or run **just this
+integration** interactively (discover, pair, control, and inspect devices from a prompt) with no Hub.
+Note here whatever prerequisites your protocol needs to run on its own (a broker, a radio, a local
+server, …).
 
-```python
-# run.py
-import asyncio
-
-from majordom_integration_sdk.dev import run_controller
-from integration_template.controller import ExampleController  # your Controller
-
-# Starts discovery, watches for devices, logs discoveries/events. Ctrl-C to stop.
-# db_path persists paired devices across restarts; omit it for an in-memory store.
-asyncio.run(run_controller(ExampleController, db_path="devices.db"))
-```
-
-```sh
-poetry run python run.py
-```
-
-To pair, control, or fetch a device programmatically (instead of just watching), build the
-dependencies yourself and call the controller directly:
-
-```python
-import asyncio
-
-from majordom_integration_sdk.dev import build_dependencies
-from majordom_integration_sdk.schemas.device import ProvidedCredentials
-from integration_template.controller import ExampleController
-
-async def main():
-    deps = build_dependencies(integration=ExampleController.name, db_path="devices.db")
-    controller = ExampleController(deps)
-    await controller.start()
-    # ... await controller.pair_device(discovery, ProvidedCredentials(...)), send_command, fetch ...
-    await controller.stop()
-
-asyncio.run(main())
-```
+See **[Standalone mode](https://docs.majordom.io/device-integration/standalone)** for the interactive
+CLI, watch mode, and the programmatic API.
 
 ## About this integration
 
