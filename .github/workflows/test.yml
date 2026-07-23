@@ -38,10 +38,10 @@ jobs:
     if: github.repository == 'MajorDom-Systems/integration-template'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install poetry
         run: pipx install poetry
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           # No `cache: poetry` — the template gitignores poetry.lock, so there's nothing to key on.
