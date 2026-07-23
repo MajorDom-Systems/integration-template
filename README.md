@@ -112,25 +112,40 @@ CLI, watch mode, and the programmatic API.
   bridge/hub, an MQTT broker, a matter-server instance …_ — what must be running and reachable.
 - **OS / permissions:** _e.g. Bluetooth access, host networking, mDNS/SSDP on the LAN …_
 
-### Protocol stack (OSI)
+### Protocol stack
 
-<!-- EXAMPLE — the table below is a Matter-over-Thread illustration; replace every row with
-     your own stack. Map the stack this integration bridges and mark which layers are THIS
-     repo's code vs. provided by a library, the OS, or the harness above — it sets the scope
-     of what the integration owns. Keep only the rows that apply. -->
+Every integration is two things stacked: the **MajorDom integration layer** — mapping the
+protocol to MajorDom's domain model — sitting on top of the **protocol stack** it bridges. The
+top layer is *always this repo*. How much of the stack *below* it is also this repo's code
+varies: some integrations only map an existing application-level protocol (a vendor library / the
+OS / the harness provides everything under them), while others implement the protocol themselves,
+down to raw UDP or even a custom radio.
 
-| OSI layer | Protocol | Implemented by |
-|-----------|----------|----------------|
-| Application (7) | _Matter clusters / data model_ | **this integration** (via `chip` lib) |
+<!-- EXAMPLE — the table below is a Matter-over-Thread illustration; replace every row with your
+     own stack. Mark which layers are THIS repo's code vs. a library, the OS, or the harness —
+     it sets the scope of what the integration owns. Keep only the rows that apply. -->
+
+| Layer | Protocol | Implemented by |
+|-------|----------|----------------|
+| **MajorDom integration** | maps the protocol ↔ MajorDom domain model | **this repo, always** |
+| Application (7) | _Matter clusters / data model_ | this integration (via `chip` lib) |
 | Session (5) | _CASE / PASE secure session_ | library |
 | Transport (4) | _UDP_ | OS |
 | Network (3) | _IPv6 · 6LoWPAN_ | OS · OTBR (harness) |
 | Data link / Physical (1–2) | _Thread · IEEE 802.15.4_ | radio adapter (harness) |
 
+If your integration implements the protocol itself (no vendor library), more of the lower rows
+become **this integration** — a custom-radio integration can own everything from the application
+layer down to the physical.
+
 ### Progress
 
-The canonical [Implementation Checklist](https://docs.majordom.io/device-integration) —
-tick items as you implement them (and as the corresponding test in `tests/` goes green):
+Two checklists — this README is where you track them (tick items as you implement them and the
+matching test in `tests/` goes green). The docs explain the *why* behind each item:
+[Implementation Checklist](https://docs.majordom.io/device-integration) (gets it working) and
+[Quality Checklist](https://docs.majordom.io/device-integration/quality) (gets it releasable).
+
+**Implementation** — makes the integration functional:
 
 - [ ] Discovery services registered via `self.dependencies.zeroconf_discovery_service`, `ssdp_discovery_service`, and/or `ble_discovery_service` as appropriate; cancel closures saved and called in `stop`
 - [ ] Discovery service listeners fire when devices are found, and the controller calls `self.dependencies.output.controller_did_receive_discovery`
@@ -146,7 +161,26 @@ tick items as you implement them (and as the corresponding test in `tests/` goes
 - [ ] Paired devices going offline/coming back online *while the Hub is running* (not just on reboot) — set `device.available` accordingly (report `controller_did_lose_device`), and clear/set `last_error` to match
 - [ ] Graceful shutdown in `stop`, cancelling any running tasks, discovery stopped, all connections closed
 - [ ] Tests pass against a virtual/simulated device (`tests/test_controller.py`)
-- [ ] README fully filled in: delete the template-setup section above, complete **About this integration**, **Required harness**, **Protocol stack (OSI)**, and **Notes** with real content
+- [ ] README fully filled in: delete the template-setup section above, complete **About this integration**, **Required harness**, **Protocol stack**, and **Notes** with real content
+
+**Quality** — makes it reliable and maintainable (the bar for release):
+
+- [ ] **Recovers automatically** from connection loss / offline device / restarted backend — retried with backoff, no manual restart
+- [ ] **No exception escapes the controller** — every background task, subscription loop, and callback catches its own errors; nothing raised into `self.dependencies.output.*`
+- [ ] **Failures are surfaced, not raised** — logged once (no spam) and reflected on the device (`available` / `last_error`), cleared on recovery
+- [ ] **Re-authenticates automatically** when credentials expire/are rejected (if the protocol uses credentials)
+- [ ] **Fully asynchronous** — no blocking I/O on the event loop; heavy/blocking work runs off-loop
+- [ ] **Stable identity** — device and parameter UUIDs derived through the SDK helpers, identical across restarts/re-pairs
+- [ ] **End-to-end tests** drive pair → command → fetch → events → `unpair` against a virtual device (`majordom_integration_sdk.testing`)
+- [ ] **Failure paths tested** — offline device, transport error, rejected credentials degrade gracefully (no raise)
+- [ ] **Broad device coverage** where the protocol has many device/parameter types (a virtual-device catalogue in CI is ideal)
+- [ ] **Fully typed** (`ty`, no package-wide ignores) and **clean** (`poe check`) with no warnings
+- [ ] **Readable & structured** — conversion logic in a mapper, models separated, comments where intent isn't obvious
+- [ ] **Efficient** — subscriptions over polling; batch/chunk reads; no redundant work
+- [ ] **Diagnosable** — logging at the right levels to debug a device problem from logs alone
+- [ ] **Rich parameter metadata** — correct `visibility` per parameter and a sensible `main_parameter`, so the app presents a clean control-center action and a tidy parameter list ([Parameter UX](https://docs.majordom.io/device-integration/parameter-ux))
+- [ ] **Owned** — a listed maintainer who keeps it working as the protocol/library evolve
+- [ ] _nice-to-have:_ localizable naming · firmware/software updates (where supported) · user-facing supported-device docs
 
 ### Notes
 
