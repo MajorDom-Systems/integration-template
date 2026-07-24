@@ -112,7 +112,8 @@ async def device_state(deps: AbstractController.Dependencies) -> DeviceState:
         role=ParameterRole.control,
         visibility=ParameterVisibility.user,
         integration_data=None,
-    ).with_value(True)
+        value=True,
+    )
     state = DeviceState(
         id=uuid4(),
         name="Living Room Lamp",

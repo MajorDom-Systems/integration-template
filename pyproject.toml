@@ -22,7 +22,7 @@ classifiers = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "majordom-integration-sdk (>=0.1.4,<1.0)",
+    "majordom-integration-sdk (>=0.1.5,<1.0)",
 ]
 
 [project.urls]
