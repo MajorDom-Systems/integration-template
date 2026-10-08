@@ -37,6 +37,13 @@ class ExampleController(AbstractController[Device, Parameter]):
 
     name = "Example"
 
+    # What the controller connects to beyond the network, and what the user can set. The Hub binds
+    # each need and hands it over in `self.dependencies.links` (by family); settings arrive validated
+    # in `self.dependencies.settings`. Leave both out if the protocol only uses the network.
+    # See https://docs.majordom.io/device-integration/radios and .../settings.
+    # needs = [Need("zigbee")]  # from majordom_integration_sdk import Need
+    # settings = ExampleSettings  # a pydantic BaseModel; give every field a plain-language `title`
+
     @property
     def discoveries(self) -> dict[UUID, Discovery]:
         # Return the cached snapshot only — never scan here.
