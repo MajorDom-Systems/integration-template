@@ -33,6 +33,7 @@ class ExampleController(AbstractController[Device, Parameter]):
     def __init__(self, dependencies: AbstractController.Dependencies):
         super().__init__(dependencies)
         self._discoveries: dict[UUID, Discovery] = {}
+        # e.g. self._cancel_zeroconf: Callable[[], None] | None = None
 
     name = "Example"
 
@@ -46,11 +47,14 @@ class ExampleController(AbstractController[Device, Parameter]):
     async def start(self) -> None:
         # Register discovery services, subscribe to protocol events, and reconcile the
         # state of already-paired devices here.
-        # e.g. self.dependencies.zeroconf_discovery_service.add_listener("_example._tcp.local.", self)
+        # e.g. self._cancel_zeroconf = self.dependencies.zeroconf_discovery_service.register(
+        #     self, {"_example._tcp.local."}
+        # )
         ...
 
     async def stop(self) -> None:
         # Cancel tasks and release every held resource.
+        # e.g. if self._cancel_zeroconf: self._cancel_zeroconf()
         ...
 
     # Hub -> device ---------------------------------------------------------
