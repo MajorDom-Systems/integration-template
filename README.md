@@ -99,23 +99,18 @@ CLI, watch mode, and the programmatic API.
 - **Supported devices:** _…_
 - **Credentials needed to pair:** _none / code / secret / qr_
 
-### Needs
+### Required harness
 
-<!-- EXAMPLE — replace with what your controller declares in `needs`, `services` and `settings`
-     (`integration_template/controller.py`). Delete the table if it only uses the network. -->
+<!-- EXAMPLE — replace with your integration's real requirements (delete rows that don't
+     apply). External things this integration needs to run, beyond `pip install`, so a
+     deployment knows what to provide. -->
 
-What the integration connects to. The Hub binds each need to a radio, a service or the host and
-hands it over in `dependencies.links`; standalone, you pass `links={...}` yourself. See
-[Connecting to radios and services](https://docs.majordom.io/device-integration/radios).
-
-| Capability | Required | Provided by |
-|------------|----------|-------------|
-| _`zigbee` (any dialect)_ | _yes_ | _a Zigbee coordinator stick, or the `multiprotocol` service on a multi-PAN stick_ |
-| _`thread/otbr-rest`_ | _no_ | _a Thread border router (`otbr` or `multiprotocol` service)_ |
-
-- **Services it brings:** _e.g. a `matter-server` container, declared in `services` — or none_
-- **Settings:** _e.g. channel, transmit power, declared in `settings` — or none_
-- **Other requirements:** _e.g. mDNS/SSDP on the LAN, a vendor bridge on the network …_
+- **Hardware adapters:** _e.g. an 802.15.4 radio (SkyConnect / a Thread or Zigbee dongle), a
+  USB serial gateway …_ — the Hub assigns OS device paths through
+  `dependencies.hardware_interfaces` (e.g. `/dev/ttyACM0`).
+- **Third-party software services:** _e.g. an OpenThread Border Router (OTBR), a vendor
+  bridge/hub, an MQTT broker, a matter-server instance …_ — what must be running and reachable.
+- **OS / permissions:** _e.g. Bluetooth access, host networking, mDNS/SSDP on the LAN …_
 
 ### Protocol stack
 
@@ -166,7 +161,7 @@ matching test in `tests/` goes green). The docs explain the *why* behind each it
 - [ ] Paired devices going offline/coming back online *while the Hub is running* (not just on reboot) — set `device.available` accordingly (report `controller_did_lose_device`), and clear/set `last_error` to match
 - [ ] Graceful shutdown in `stop`, cancelling any running tasks, discovery stopped, all connections closed
 - [ ] Tests pass against a virtual/simulated device (`tests/test_controller.py`)
-- [ ] README fully filled in: delete the template-setup section above, complete **About this integration**, **Needs**, **Protocol stack**, and **Notes** with real content
+- [ ] README fully filled in: delete the template-setup section above, complete **About this integration**, **Required harness**, **Protocol stack**, and **Notes** with real content
 
 **Quality** — makes it reliable and maintainable (the bar for release):
 
@@ -176,17 +171,13 @@ matching test in `tests/` goes green). The docs explain the *why* behind each it
 - [ ] **Re-authenticates automatically** when credentials expire/are rejected (if the protocol uses credentials)
 - [ ] **Fully asynchronous** — no blocking I/O on the event loop; heavy/blocking work runs off-loop
 - [ ] **Stable identity** — device and parameter UUIDs derived through the SDK helpers, identical across restarts/re-pairs
-- [ ] **No environment variables and no device paths** — radios, servers and options arrive through `dependencies.links` / `settings` / `context`
-- [ ] **`needs` declared** — everything beyond the network is a `Need` (optional where it still works without it); a server it depends on is a `Service`
 - [ ] **End-to-end tests** drive pair → command → fetch → events → `unpair` against a virtual device (`majordom_integration_sdk.testing`)
 - [ ] **Failure paths tested** — offline device, transport error, rejected credentials degrade gracefully (no raise)
-- [ ] **Behaviour without a required radio tested** — a lost radio/service reports `still_running=False` so the Hub restarts it; an unbound optional need doesn't block `start`
 - [ ] **Broad device coverage** where the protocol has many device/parameter types (a virtual-device catalogue in CI is ideal)
 - [ ] **Fully typed** (`ty`, no package-wide ignores) and **clean** (`poe check`) with no warnings
 - [ ] **Readable & structured** — conversion logic in a mapper, models separated, comments where intent isn't obvious
 - [ ] **Efficient** — subscriptions over polling; batch/chunk reads; no redundant work
 - [ ] **Diagnosable** — logging at the right levels to debug a device problem from logs alone
-- [ ] **Settings have plain-language titles** — every `settings` field has a user-facing `title` (and `description` where it helps) and a default ([Settings](https://docs.majordom.io/device-integration/settings))
 - [ ] **Rich parameter metadata** — correct `visibility` per parameter and a sensible `main_parameter`, so the app presents a clean control-center action and a tidy parameter list ([Parameter UX](https://docs.majordom.io/device-integration/parameter-ux))
 - [ ] **Owned** — a listed maintainer who keeps it working as the protocol/library evolve
 - [ ] _nice-to-have:_ localizable naming · firmware/software updates (where supported) · user-facing supported-device docs
