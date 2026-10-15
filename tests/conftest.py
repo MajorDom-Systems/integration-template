@@ -15,9 +15,13 @@ would, so the controller sees realistic state — the tests never make the integ
 persist a device itself.
 """
 
+import asyncio
+import contextlib
+from collections.abc import AsyncIterator
 from uuid import uuid4
 
 import pytest
+from majordom_integration_sdk import Endpoint
 from majordom_integration_sdk.controller import AbstractController
 from majordom_integration_sdk.schemas.device import CredentialsType, Device, DeviceState, Discovery
 from majordom_integration_sdk.schemas.parameter import (
@@ -33,10 +37,69 @@ from integration_template import ExampleController
 INTEGRATION = "example"
 
 
+class VirtualServer:
+    """An in-process stand-in for EXAMPLE_SERVER: records the lines it receives and can go away."""
+
+    def __init__(self) -> None:
+        self.port = 0
+        self.lines: list[str] = []
+        self._server: asyncio.Server | None = None
+        self._clients: list[asyncio.StreamWriter] = []
+
+    async def start(self) -> None:
+        self._server = await asyncio.start_server(self._serve, "127.0.0.1", self.port)
+        self.port = self._server.sockets[0].getsockname()[1]  # the same one again after a restart
+
+    async def stop(self) -> None:
+        for client in self._clients:
+            client.close()
+        self._clients.clear()
+        if self._server:
+            self._server.close()
+            await self._server.wait_closed()
+            self._server = None
+
+    async def received(self, line: str) -> None:
+        async with asyncio.timeout(2):
+            while line not in self.lines:
+                await asyncio.sleep(0.01)
+
+    async def _serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        self._clients.append(writer)
+        with contextlib.suppress(ConnectionError):
+            while line := await reader.readline():
+                self.lines.append(line.decode().strip())
+
+
+class FakeServiceControl:
+    """Records the services the controller restarts instead of restarting containers."""
+
+    def __init__(self) -> None:
+        self.restarted: list[str] = []
+
+    async def restart(self, service: str) -> None:
+        self.restarted.append(service)
+
+
 @pytest.fixture
-def deps() -> AbstractController.Dependencies:
-    """SDK-provided test dependencies (recording output + in-memory repo + fake discovery)."""
-    return build_test_dependencies(integration=INTEGRATION)
+async def server() -> AsyncIterator[VirtualServer]:
+    server = VirtualServer()
+    await server.start()
+    yield server
+    await server.stop()
+
+
+@pytest.fixture
+def services() -> FakeServiceControl:
+    return FakeServiceControl()
+
+
+@pytest.fixture
+def deps(server: VirtualServer, services: FakeServiceControl) -> AbstractController.Dependencies:
+    """SDK-provided test dependencies (recording output + in-memory repo + fake discovery), with the
+    controller's need bound to the virtual server, as the Hub binds it to EXAMPLE_SERVER."""
+    link = Endpoint("example", "tcp", f"tcp://127.0.0.1:{server.port}")
+    return build_test_dependencies(integration=INTEGRATION).copy(links={"example": link}, services=services)
 
 
 @pytest.fixture
