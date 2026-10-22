@@ -109,7 +109,7 @@ CLI, watch mode, and the programmatic API.
   USB serial gateway …_ — the Hub assigns OS device paths through
   `dependencies.hardware_interfaces` (e.g. `/dev/ttyACM0`).
 - **Third-party software services:** _e.g. an OpenThread Border Router (OTBR), a vendor
-  bridge/hub, an MQTT broker, a matter-server instance …_ — what must be running and reachable.
+  bridge/hub, an MQTT broker, a matterjs-server instance …_ — what must be running and reachable.
 - **OS / permissions:** _e.g. Bluetooth access, host networking, mDNS/SSDP on the LAN …_
 
 ### Protocol stack

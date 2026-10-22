@@ -53,7 +53,7 @@ class ExampleController(AbstractController[Device, Parameter]):
     # `self.dependencies.links["example"]`; settings arrive validated in `self.dependencies.settings`.
     # Leave them out if the protocol only uses the network.
     # See https://docs.majordom.io/device-integration/radios and .../settings.
-    needs = [Need("example", ["tcp"])]
+    needs = [Need("example", ["echo"])]
     services = [EXAMPLE_SERVER]
     settings = ExampleSettings
 

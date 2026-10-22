@@ -10,7 +10,7 @@ class ExampleSettings(BaseModel):
 
 EXAMPLE_SERVER = Service(
     "example-server",
-    provides=[Endpoint("example", "tcp", "tcp://127.0.0.1:{ports.api}")],
+    provides=[Endpoint("example", "echo", "tcp://127.0.0.1:{ports.api}")],
     ports={"api": 9000},  # preferred: the runtime picks another one when it's taken
     compose={
         # EXAMPLE: a tiny TCP echo server standing in for your protocol's server. Replace it; pin yours by digest.

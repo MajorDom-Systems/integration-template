@@ -98,7 +98,7 @@ def services() -> FakeServiceControl:
 def deps(server: VirtualServer, services: FakeServiceControl) -> AbstractController.Dependencies:
     """SDK-provided test dependencies (recording output + in-memory repo + fake discovery), with the
     controller's need bound to the virtual server, as the Hub binds it to EXAMPLE_SERVER."""
-    link = Endpoint("example", "tcp", f"tcp://127.0.0.1:{server.port}")
+    link = Endpoint("example", "echo", f"tcp://127.0.0.1:{server.port}")
     return build_test_dependencies(integration=INTEGRATION).copy(links={"example": link}, services=services)
 
 
