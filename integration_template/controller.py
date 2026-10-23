@@ -6,8 +6,9 @@ full lifecycle the Hub drives: discovery -> pairing -> commands -> teardown.
 See the full guide at https://docs.majordom.io/device-integration.
 
 A Controller bridges one external protocol/platform into the MajorDom language. The Hub
-instantiates it with injected `Dependencies` and calls the methods below; the controller
-reports back to the Hub through `dependencies.output` (a `ControllerOutput`).
+instantiates it with the app's services (`self.platform`) and its bound needs (`self.peripherals`)
+and calls the methods below; the controller reports back to the Hub through `platform.output`
+(a `ControllerOutput`).
 """
 
 from __future__ import annotations
@@ -15,12 +16,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from collections.abc import Mapping
 from typing import cast
 from urllib.parse import urlsplit
 from uuid import UUID
 
 from majordom_integration_sdk import Context, Need
-from majordom_integration_sdk.controller import AbstractController
+from majordom_integration_sdk.controller import AbstractController, Platform
+from majordom_integration_sdk.peripherals import Bound
 from majordom_integration_sdk.schemas.command import DeviceCommand
 from majordom_integration_sdk.schemas.device import Device, Discovery, Parameter, ProvidedCredentials
 from pydantic import BaseModel
@@ -41,8 +44,8 @@ logger = logging.getLogger(__name__)
 class ExampleController(AbstractController[Device, Parameter]):
     """Bridges the Example protocol into MajorDom."""
 
-    def __init__(self, dependencies: AbstractController.Dependencies):
-        super().__init__(dependencies)
+    def __init__(self, platform: Platform, peripherals: Mapping[str, Bound] | None = None):
+        super().__init__(platform, peripherals)
         self._discoveries: dict[UUID, Discovery] = {}
         # e.g. self._cancel_zeroconf: Callable[[], None] | None = None
 
@@ -50,7 +53,9 @@ class ExampleController(AbstractController[Device, Parameter]):
 
     # What the controller connects to beyond the network, the server it brings along, and what the
     # user can set. The Hub runs EXAMPLE_SERVER, binds the need to it and hands over its URL in
-    # `self.dependencies.links["example"]`; settings arrive validated in `self.dependencies.settings`.
+    # `self.peripherals.endpoint("example")`; settings arrive validated in `self.platform.settings`.
+    # Declare everything external as a Need: radios, Need("ble", ["router"]) (never raw Bluetooth),
+    # Need("mdns", ["dns-sd"]), Need("upnp", ["ssdp"]) and the services you bring.
     # Leave them out if the protocol only uses the network.
     # See https://docs.majordom.io/device-integration/radios and .../settings.
     needs = [Need("example", ["echo"])]
@@ -68,11 +73,10 @@ class ExampleController(AbstractController[Device, Parameter]):
     # Lifecycle -------------------------------------------------------------
 
     async def start(self) -> None:
-        # Register discovery services, subscribe to protocol events, and reconcile the
+        # Register with discovery (needed as peripherals), subscribe to protocol events, and reconcile the
         # state of already-paired devices here.
-        # e.g. self._cancel_zeroconf = self.dependencies.zeroconf_discovery_service.register(
-        #     self, {"_example._tcp.local."}
-        # )
+        # e.g. with Need("mdns", ["dns-sd"]) in `needs`:
+        # self._cancel_zeroconf = self.peripherals.instance("mdns").register(self, {"_example._tcp.local."})
         await self._connect()  # raising here has the Hub retry start()
         self._keeper = asyncio.create_task(self._stay_connected())
 
@@ -92,7 +96,7 @@ class ExampleController(AbstractController[Device, Parameter]):
             await self._sync_with_server()
             # The server applies its name only at start. The restart drops the connection, and
             # _stay_connected heals it, so the integration keeps running.
-            await self.dependencies.services.restart(EXAMPLE_SERVER.name)
+            await self.platform.services.restart(EXAMPLE_SERVER.name)
         return True
 
     async def context_did_change(self, before: Context) -> bool:
@@ -102,17 +106,17 @@ class ExampleController(AbstractController[Device, Parameter]):
 
     @property
     def _settings(self) -> ExampleSettings:
-        return cast(ExampleSettings, self.dependencies.settings or ExampleSettings())
+        return cast(ExampleSettings, self.platform.settings or ExampleSettings())
 
     async def _connect(self) -> None:
-        url = urlsplit(self.dependencies.links["example"].url)  # never build it yourself: the port may differ
+        url = urlsplit(self.peripherals.endpoint("example").url)  # never build it yourself: the port may differ
         self._reader, self._writer = await asyncio.open_connection(url.hostname, url.port)
         await self._sync_with_server()
 
     async def _sync_with_server(self) -> None:
         """Hands the server its configuration; on every (re)connect."""
         self._writer.write(f"name {self._settings.server_name}\n".encode())
-        if region := self.dependencies.context.region:
+        if region := self.platform.context.region:
             self._writer.write(f"region {region}\n".encode())
         await self._writer.drain()
 
@@ -123,7 +127,7 @@ class ExampleController(AbstractController[Device, Parameter]):
             await self._listen()
             self._writer.close()
             message = "Lost the connection to the Example server, reconnecting."
-            await self.dependencies.output.controller_did_encounter_error(self, message, still_running=True)
+            await self.platform.output.controller_did_encounter_error(self, message, still_running=True)
             delay = self._RECONNECT_DELAY
             while True:
                 await asyncio.sleep(delay)
@@ -145,7 +149,7 @@ class ExampleController(AbstractController[Device, Parameter]):
 
     async def pair_device(self, discovery: Discovery, credentials: ProvidedCredentials | None) -> None:
         # Establish a session with the device, then report success to the Hub:
-        # await self.dependencies.output.controller_did_connect_device(self, self.device_uuid(...))
+        # await self.platform.output.controller_did_connect_device(self, self.device_uuid(...))
         raise NotImplementedError
 
     async def unpair(self, device: Device) -> None:
@@ -157,7 +161,7 @@ class ExampleController(AbstractController[Device, Parameter]):
 
     async def fetch(self, device: Device) -> None:
         # Refresh the device and its parameters, reporting changes via
-        # self.dependencies.output.controller_did_receive_events(self, [...]).
+        # self.platform.output.controller_did_receive_events(self, [...]).
         raise NotImplementedError
 
     async def send_command(self, command: DeviceCommand, device: Device, parameter: Parameter) -> None:

@@ -6,7 +6,7 @@ from typing import cast
 
 import pytest
 from majordom_integration_sdk import Context
-from majordom_integration_sdk.controller import AbstractController
+from majordom_integration_sdk.controller import Platform
 from majordom_integration_sdk.testing import RecordingControllerOutput
 
 from integration_template import ExampleController
@@ -24,12 +24,12 @@ async def test_connects_through_its_link_and_configures_the_server(
 
 async def test_applies_a_new_server_name_in_place(
     controller: ExampleController,
-    deps: AbstractController.Dependencies,
+    deps: Platform,
     server: VirtualServer,
     services: FakeServiceControl,
 ) -> None:
     await controller.start()
-    controller.dependencies = deps.copy(settings=ExampleSettings(server_name="Attic"))
+    controller.platform = deps.copy(settings=ExampleSettings(server_name="Attic"))
     assert await controller.settings_did_change(deps.settings)
     await server.received("name Attic")
     assert services.restarted == ["example-server"]
@@ -42,7 +42,7 @@ async def test_asks_for_a_restart_when_the_context_changes(controller: ExampleCo
 
 async def test_reconnects_when_the_server_comes_back(
     controller: ExampleController,
-    deps: AbstractController.Dependencies,
+    deps: Platform,
     server: VirtualServer,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

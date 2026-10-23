@@ -20,7 +20,7 @@ integration created a device row.
 implement the controller.)
 """
 
-from majordom_integration_sdk.controller import AbstractController
+from majordom_integration_sdk.controller import Platform
 from majordom_integration_sdk.schemas.command import DeviceCommand
 from majordom_integration_sdk.schemas.device import Device, Discovery
 from majordom_integration_sdk.schemas.parameter import ParameterState
@@ -30,7 +30,7 @@ from integration_template import ExampleController
 
 async def test_pairs_a_discovered_device(
     controller: ExampleController,
-    deps: AbstractController.Dependencies,
+    deps: Platform,
     discovery: Discovery,
     provisional_device: Device,  # creates a device with discovery.id and saves it to the db
 ) -> None:
@@ -46,7 +46,7 @@ async def test_pairs_a_discovered_device(
 
 async def test_fetches_state(
     controller: ExampleController,
-    deps: AbstractController.Dependencies,
+    deps: Platform,
     device: Device,
 ) -> None:
     await controller.fetch(device)

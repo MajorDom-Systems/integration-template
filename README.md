@@ -106,8 +106,8 @@ CLI, watch mode, and the programmatic API.
      deployment knows what to provide. -->
 
 - **Hardware adapters:** _e.g. an 802.15.4 radio (SkyConnect / a Thread or Zigbee dongle), a
-  USB serial gateway …_ — the Hub assigns OS device paths through
-  `dependencies.hardware_interfaces` (e.g. `/dev/ttyACM0`).
+  USB serial gateway …_ — the Hub binds them to the controller's `needs` and hands them over in
+  `self.peripherals` (e.g. `/dev/ttyACM0`).
 - **Third-party software services:** _e.g. an OpenThread Border Router (OTBR), a vendor
   bridge/hub, an MQTT broker, a matterjs-server instance …_ — what must be running and reachable.
 - **OS / permissions:** _e.g. Bluetooth access, host networking, mDNS/SSDP on the LAN …_
@@ -147,26 +147,28 @@ matching test in `tests/` goes green). The docs explain the *why* behind each it
 
 **Implementation** — makes the integration functional:
 
-- [ ] Discovery services registered via `self.dependencies.zeroconf_discovery_service`, `ssdp_discovery_service`, and/or `ble_discovery_service` as appropriate; cancel closures saved and called in `stop`
-- [ ] Discovery service listeners fire when devices are found, and the controller calls `self.dependencies.output.controller_did_receive_discovery`
-- [ ] Discovery of devices already paired to the Hub on reconnect, e.g. after a reboot (`self.dependencies.output.controller_did_connect_device` is called)
+- [ ] Discovery registered with the peripherals it needs — `self.peripherals.instance("mdns")` (DNS-SD), `"upnp"` (SSDP) and/or `"ble"` (the Bluetooth router) as appropriate; cancel closures saved and called in `stop`
+- [ ] Discovery listeners fire when devices are found, and the controller calls `self.platform.output.controller_did_receive_discovery`
+- [ ] Discovery of devices already paired to the Hub on reconnect, e.g. after a reboot (`self.platform.output.controller_did_connect_device` is called)
 - [ ] `start_pairing_window` is implemented but only if the protocol requires an explicit scan (like zigbee)
 - [ ] Device pairing 
 - [ ] Device schema is properly mapped: device info, parameter list, and each parameter's metadata are translated to MajorDom's domain model
 - [ ] Hub → Device control (`send_command` is implemented)
-- [ ] Device → Hub event subscription (`self.dependencies.output.controller_did_receive_events` is called on incoming events)
+- [ ] Device → Hub event subscription (`self.platform.output.controller_did_receive_events` is called on incoming events)
 - [ ] `identify` is implemented
 - [ ] `unpair` is implemented
 - [ ] `fetch` is implemented
 - [ ] Paired devices going offline/coming back online *while the Hub is running* (not just on reboot) — set `device.available` accordingly (report `controller_did_lose_device`), and clear/set `last_error` to match
 - [ ] Graceful shutdown in `stop`, cancelling any running tasks, discovery stopped, all connections closed
+- [ ] Everything external declared as a `Need` — radios, `ble/router`, `mdns/dns-sd`, `upnp/ssdp`, the services it brings; never raw Bluetooth
+- [ ] Resolved needs read from `self.peripherals`, Hub-provided app services from `self.platform`
 - [ ] Tests pass against a virtual/simulated device (`tests/test_controller.py`)
 - [ ] README fully filled in: delete the template-setup section above, complete **About this integration**, **Required harness**, **Protocol stack**, and **Notes** with real content
 
 **Quality** — makes it reliable and maintainable (the bar for release):
 
 - [ ] **Recovers automatically** from connection loss / offline device / restarted backend — retried with backoff, no manual restart
-- [ ] **No exception escapes the controller** — every background task, subscription loop, and callback catches its own errors; nothing raised into `self.dependencies.output.*`
+- [ ] **No exception escapes the controller** — every background task, subscription loop, and callback catches its own errors; nothing raised into `self.platform.output.*`
 - [ ] **Failures are surfaced, not raised** — logged once (no spam) and reflected on the device (`available` / `last_error`), cleared on recovery
 - [ ] **Re-authenticates automatically** when credentials expire/are rejected (if the protocol uses credentials)
 - [ ] **Fully asynchronous** — no blocking I/O on the event loop; heavy/blocking work runs off-loop
