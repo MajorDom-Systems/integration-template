@@ -5,7 +5,7 @@ import asyncio
 from typing import cast
 
 import pytest
-from majordom_integration_sdk import Context
+from majordom_integration_sdk import Context, IntegrationError
 from majordom_integration_sdk.controller import Platform
 from majordom_integration_sdk.testing import RecordingControllerOutput
 
@@ -57,6 +57,10 @@ async def test_reconnects_when_the_server_comes_back(
     await server.start()
 
     await server.received("name MajorDom")
-    errors = cast(RecordingControllerOutput, deps.output).errors
-    assert errors == [("Lost the connection to the Example server, reconnecting.", True)]
+    output = cast(RecordingControllerOutput, deps.output)
+    async with asyncio.timeout(1):
+        while output.errors:  # resolved once connected again
+            await asyncio.sleep(0.01)
+    lost = IntegrationError("server-unreachable", "Lost the connection to the Example server, reconnecting.")
+    assert output.error_log == [lost, "server-unreachable"]
     await controller.stop()

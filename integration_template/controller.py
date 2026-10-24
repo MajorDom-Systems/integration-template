@@ -21,7 +21,7 @@ from typing import cast
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from majordom_integration_sdk import Context, Need
+from majordom_integration_sdk import Context, IntegrationError, Need
 from majordom_integration_sdk.controller import AbstractController, Platform
 from majordom_integration_sdk.peripherals import Bound
 from majordom_integration_sdk.schemas.command import DeviceCommand
@@ -127,7 +127,9 @@ class ExampleController(AbstractController[Device, Parameter]):
             await self._listen()
             self._writer.close()
             message = "Lost the connection to the Example server, reconnecting."
-            await self.platform.output.controller_did_encounter_error(self, message, still_running=True)
+            await self.platform.output.controller_did_encounter_error(
+                self, IntegrationError("server-unreachable", message)
+            )
             delay = self._RECONNECT_DELAY
             while True:
                 await asyncio.sleep(delay)
@@ -137,6 +139,7 @@ class ExampleController(AbstractController[Device, Parameter]):
                 except OSError as error:
                     logger.info(f"[{self.name}] the server is not back yet: {error!r}")
                     delay = min(delay * 2, self._RECONNECT_DELAY_MAX)
+            await self.platform.output.controller_did_resolve_error(self, "server-unreachable")
 
     async def _listen(self) -> None:
         """Reads the server's messages until it closes the connection."""
