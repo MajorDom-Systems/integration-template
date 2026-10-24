@@ -162,6 +162,7 @@ matching test in `tests/` goes green). The docs explain the *why* behind each it
 - [ ] Graceful shutdown in `stop`, cancelling any running tasks, discovery stopped, all connections closed
 - [ ] Everything external declared as a `Need` — radios, `ble/router`, `mdns/dns-sd`, `upnp/ssdp`, the services it brings; never raw Bluetooth
 - [ ] Resolved needs read from `self.peripherals`, Hub-provided app services from `self.platform`
+- [ ] Integration-level problems reported with a stable error id (`IntegrationError`) and resolved when they clear
 - [ ] Tests pass against a virtual/simulated device (`tests/test_controller.py`)
 - [ ] README fully filled in: delete the template-setup section above, complete **About this integration**, **Required harness**, **Protocol stack**, and **Notes** with real content
 
