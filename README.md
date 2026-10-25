@@ -160,7 +160,7 @@ matching test in `tests/` goes green). The docs explain the *why* behind each it
 - [ ] `fetch` is implemented
 - [ ] Paired devices going offline/coming back online *while the Hub is running* (not just on reboot) — set `device.available` accordingly (report `controller_did_lose_device`), and clear/set `last_error` to match
 - [ ] Graceful shutdown in `stop`, cancelling any running tasks, discovery stopped, all connections closed
-- [ ] Everything external declared as a `Need` — radios, `ble/router`, `mdns/dns-sd`, `upnp/ssdp`, the services it brings; never raw Bluetooth
+- [ ] Everything external declared as a `Need` — radios, `ble/router`, `mdns/zeroconf`, `upnp/ssdp`, the services it brings; never raw Bluetooth
 - [ ] Resolved needs read from `self.peripherals`, Hub-provided app services from `self.platform`
 - [ ] Integration-level problems reported with a stable error id (`IntegrationError`) and resolved when they clear
 - [ ] Tests pass against a virtual/simulated device (`tests/test_controller.py`)

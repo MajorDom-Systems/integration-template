@@ -55,7 +55,7 @@ class ExampleController(AbstractController[Device, Parameter]):
     # user can set. The Hub runs EXAMPLE_SERVER, binds the need to it and hands over its URL in
     # `self.peripherals.endpoint("example")`; settings arrive validated in `self.platform.settings`.
     # Declare everything external as a Need: radios, Need("ble", ["router"]) (never raw Bluetooth),
-    # Need("mdns", ["dns-sd"]), Need("upnp", ["ssdp"]) and the services you bring.
+    # Need("mdns", ["zeroconf"]), Need("upnp", ["ssdp"]) and the services you bring.
     # Leave them out if the protocol only uses the network.
     # See https://docs.majordom.io/device-integration/radios and .../settings.
     needs = [Need("example", ["echo"])]
@@ -75,7 +75,7 @@ class ExampleController(AbstractController[Device, Parameter]):
     async def start(self) -> None:
         # Register with discovery (needed as peripherals), subscribe to protocol events, and reconcile the
         # state of already-paired devices here.
-        # e.g. with Need("mdns", ["dns-sd"]) in `needs`:
+        # e.g. with Need("mdns", ["zeroconf"]) in `needs`:
         # self._cancel_zeroconf = self.peripherals.instance("mdns").register(self, {"_example._tcp.local."})
         await self._connect()  # raising here has the Hub retry start()
         self._keeper = asyncio.create_task(self._stay_connected())
