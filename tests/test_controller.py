@@ -33,7 +33,7 @@ async def test_pairs_a_discovered_device(
     deps: Platform,
     discovery: Discovery,
     provisional_device: Device,  # creates a device with discovery.id and saves it to the db
-) -> None:
+):
     # The Hub has already stored `provisional_device` (id == discovery.id) before this call.
     await controller.pair_device(discovery, credentials=None)
     # TODO: verify pairing actually completed — the controller established the session and
@@ -48,7 +48,7 @@ async def test_fetches_state(
     controller: ExampleController,
     deps: Platform,
     device: Device,
-) -> None:
+):
     await controller.fetch(device)
     # TODO: verify the refresh reached the device and propagated back:
     #   - Set a known state on the virtual device first, then assert `deps.output.events`
@@ -56,7 +56,7 @@ async def test_fetches_state(
     #     or default values.
 
 
-async def test_sends_a_command(controller: ExampleController, device: Device, parameter: ParameterState) -> None:
+async def test_sends_a_command(controller: ExampleController, device: Device, parameter: ParameterState):
     command = DeviceCommand(device_id=device.id, parameter_id=parameter.id, value=False)
     await controller.send_command(command, device, parameter)
     # TODO: verify the command actually applied on the device, not just that the call
@@ -64,13 +64,13 @@ async def test_sends_a_command(controller: ExampleController, device: Device, pa
     #   to `value` (read it back). A no-op that silently succeeds must fail this test.
 
 
-async def test_identifies(controller: ExampleController, device: Device) -> None:
+async def test_identifies(controller: ExampleController, device: Device):
     await controller.identify(device)
     # TODO: assert the virtual device recorded an identify request (e.g. its identify counter
     #   incremented / the identify command was received).
 
 
-async def test_unpairs(controller: ExampleController, device: Device) -> None:
+async def test_unpairs(controller: ExampleController, device: Device):
     await controller.unpair(device)
     # TODO: verify removal took effect:
     #   - Device side: the virtual device saw the session torn down / was de-registered.

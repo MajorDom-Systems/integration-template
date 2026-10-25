@@ -10,12 +10,12 @@ from majordom_integration_sdk.testing import build_test_platform
 from integration_template import ExampleController, peripherals
 
 
-async def test_starts_and_stops(controller: ExampleController) -> None:
+async def test_starts_and_stops(controller: ExampleController):
     await controller.start()
     await controller.stop()
 
 
-async def test_name_and_slug(controller: ExampleController) -> None:
+async def test_name_and_slug(controller: ExampleController):
     assert controller.name == "Example"
     assert controller.name_slug == "example"
 

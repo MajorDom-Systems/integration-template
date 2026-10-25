@@ -15,7 +15,7 @@ from tests.conftest import VirtualServer
 
 async def test_connects_through_its_link_and_configures_the_server(
     controller: ExampleController, server: VirtualServer
-) -> None:
+):
     await controller.start()
     await server.received("name MajorDom")
     await controller.stop()
@@ -29,7 +29,7 @@ async def test_applies_a_new_server_name_in_place(controller: ExampleController,
     await controller.stop()
 
 
-async def test_asks_for_a_restart_when_the_context_changes(controller: ExampleController) -> None:
+async def test_asks_for_a_restart_when_the_context_changes(controller: ExampleController):
     assert not await controller.context_did_change(Context(region="Europe"))
 
 
@@ -38,7 +38,7 @@ async def test_reconnects_when_the_server_comes_back(
     deps: Platform,
     server: VirtualServer,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+):
     monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.01)
     monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY_MAX", 0.04)
     await controller.start()

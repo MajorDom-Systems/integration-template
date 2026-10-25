@@ -69,7 +69,7 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
 
     # Lifecycle -------------------------------------------------------------
 
-    async def start(self) -> None:
+    async def start(self):
         # Register with discovery (needed as peripherals), subscribe to protocol events, and reconcile the
         # state of already-paired devices here.
         # e.g. async with self.device_repository() as repository: paired = await repository.get_all()
@@ -78,7 +78,7 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
         await self._connect()  # raising here has the Hub retry start()
         self._keeper = asyncio.create_task(self._stay_connected())
 
-    async def stop(self) -> None:
+    async def stop(self):
         # Cancel tasks and release every held resource.
         # e.g. if self._cancel_zeroconf: self._cancel_zeroconf()
         self._keeper.cancel()
@@ -100,19 +100,19 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
 
     # Server ------------------------------------------------------------------
 
-    async def _connect(self) -> None:
+    async def _connect(self):
         url = urlsplit(self.peripherals.endpoint("example").url)  # never build it yourself: the port may differ
         self._reader, self._writer = await asyncio.open_connection(url.hostname, url.port)
         await self._sync_with_server()
 
-    async def _sync_with_server(self) -> None:
+    async def _sync_with_server(self):
         """Hands the server its configuration; on every (re)connect."""
         self._writer.write(f"name {self.settings.server_name}\n".encode())
         if region := self.platform.context.region:
             self._writer.write(f"region {region}\n".encode())
         await self._writer.drain()
 
-    async def _stay_connected(self) -> None:
+    async def _stay_connected(self):
         """Reconnects whenever the server goes away (e.g. it was restarted) until stop() cancels it,
         so the integration heals by itself instead of being restarted by the Hub."""
         while True:
@@ -133,7 +133,7 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
                     delay = min(delay * 2, self._RECONNECT_DELAY_MAX)
             await self.platform.output.controller_did_resolve_error(self, "server-unreachable")
 
-    async def _listen(self) -> None:
+    async def _listen(self):
         """Reads the server's messages until it closes the connection."""
         with contextlib.suppress(OSError):
             while line := await self._reader.readline():
@@ -142,25 +142,25 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
 
     # Hub -> device ---------------------------------------------------------
 
-    async def pair_device(self, discovery: Discovery, credentials: ProvidedCredentials | None) -> None:
+    async def pair_device(self, discovery: Discovery, credentials: ProvidedCredentials | None):
         # Establish a session with the device, then report success to the Hub:
         # await self.platform.output.controller_did_connect_device(self, self.device_uuid(...))
         # Keep what the protocol needs across restarts beyond the device database (keys, certificates)
         # in self.documents_folder.
         raise NotImplementedError
 
-    async def unpair(self, device: Device) -> None:
+    async def unpair(self, device: Device):
         raise NotImplementedError
 
-    async def identify(self, device: Device) -> None:
+    async def identify(self, device: Device):
         # Ask the device to blink/beep so the user can locate it.
         raise NotImplementedError
 
-    async def fetch(self, device: Device) -> None:
+    async def fetch(self, device: Device):
         # Refresh the device and its parameters, reporting changes via
         # self.platform.output.controller_did_receive_events(self, [...]).
         raise NotImplementedError
 
-    async def send_command(self, command: DeviceCommand, device: Device, parameter: Parameter) -> None:
+    async def send_command(self, command: DeviceCommand, device: Device, parameter: Parameter):
         # Translate the MajorDom command into a protocol-level write.
         raise NotImplementedError
