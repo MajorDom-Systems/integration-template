@@ -10,8 +10,7 @@ from majordom_integration_sdk.controller import Platform
 from majordom_integration_sdk.testing import RecordingControllerOutput
 
 from integration_template import ExampleController
-from integration_template.config import ExampleSettings
-from tests.conftest import FakeServiceControl, VirtualServer
+from tests.conftest import VirtualServer
 
 
 async def test_connects_through_its_link_and_configures_the_server(
@@ -22,17 +21,11 @@ async def test_connects_through_its_link_and_configures_the_server(
     await controller.stop()
 
 
-async def test_applies_a_new_server_name_in_place(
-    controller: ExampleController,
-    deps: Platform,
-    server: VirtualServer,
-    services: FakeServiceControl,
-) -> None:
+async def test_applies_a_new_server_name_in_place(controller: ExampleController, server: VirtualServer):
     await controller.start()
-    controller.platform = deps.copy(settings=ExampleSettings(server_name="Attic"))
-    assert await controller.settings_did_change(deps.settings)
+    before, controller.settings = controller.settings, ExampleController.Settings(server_name="Attic")
+    assert await controller.settings_did_change(before)
     await server.received("name Attic")
-    assert services.restarted == ["example-server"]
     await controller.stop()
 
 

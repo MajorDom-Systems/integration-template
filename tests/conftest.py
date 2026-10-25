@@ -35,11 +35,11 @@ from majordom_integration_sdk.testing import build_test_platform
 
 from integration_template import ExampleController
 
-INTEGRATION = "example"
+INTEGRATION = ExampleController.name  # what the Hub scopes its devices by
 
 
 class VirtualServer:
-    """An in-process stand-in for EXAMPLE_SERVER: records the lines it receives and can go away."""
+    """An in-process stand-in for `example_server()`: records the lines it receives and can go away."""
 
     def __init__(self) -> None:
         self.port = 0
@@ -72,16 +72,6 @@ class VirtualServer:
                 self.lines.append(line.decode().strip())
 
 
-class FakeServiceControl:
-    """Records the services the controller restarts instead of restarting containers."""
-
-    def __init__(self) -> None:
-        self.restarted: list[str] = []
-
-    async def restart(self, service: str) -> None:
-        self.restarted.append(service)
-
-
 @pytest.fixture
 async def server() -> AsyncIterator[VirtualServer]:
     server = VirtualServer()
@@ -91,25 +81,22 @@ async def server() -> AsyncIterator[VirtualServer]:
 
 
 @pytest.fixture
-def services() -> FakeServiceControl:
-    return FakeServiceControl()
-
-
-@pytest.fixture
-def deps(services: FakeServiceControl) -> Platform:
-    """The SDK's test platform (recording output + in-memory repo), with fake service control."""
-    return build_test_platform(integration=INTEGRATION).copy(services=services)
+def deps() -> Platform:
+    """The SDK's test platform (recording output + in-memory repo), as the Hub gives it to every integration."""
+    return build_test_platform()
 
 
 @pytest.fixture
 def peripherals(server: VirtualServer) -> Peripherals:
-    """The controller's need bound to the virtual server, as the Hub binds it to EXAMPLE_SERVER."""
+    """The controller's need bound to the virtual server, as the Hub binds it to `example_server()`."""
     return Peripherals({"example": Endpoint("example", "echo", f"tcp://127.0.0.1:{server.port}")})
 
 
 @pytest.fixture
 def controller(deps: Platform, peripherals: Peripherals) -> ExampleController:
-    return ExampleController(deps, peripherals)
+    controller = ExampleController(deps)
+    controller.peripherals = peripherals  # bound by hand, as in library mode
+    return controller
 
 
 # A virtual / simulated device — a fake endpoint that speaks your protocol in-process (no
@@ -128,7 +115,7 @@ def controller(deps: Platform, peripherals: Peripherals) -> ExampleController:
 
 async def _seed(deps: Platform, device: DeviceState) -> None:
     """Persist a device the way the Hub would, before handing control to the integration."""
-    async with deps.make_device_repository() as repo:
+    async with deps.make_device_repository(INTEGRATION) as repo:
         await repo.save(device)
 
 
