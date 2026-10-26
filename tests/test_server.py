@@ -119,6 +119,26 @@ async def test_reconnects_when_the_server_comes_back(
     await controller.stop()
 
 
+async def test_counts_a_server_that_hangs_up_before_it_answers_as_away(
+    controller: ExampleController,
+    output: RecordingControllerOutput,
+    server: VirtualServer,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.01)
+    monkeypatch.setattr(ExampleController, "_UNREACHABLE_AFTER", 0.2)
+    await controller.start()
+    await server.received("name MajorDom")
+
+    await server.stop()
+    server.is_hanging_up, server.connections = True, 0  # e.g. it refuses the client now, or a proxy's backend is down
+    await server.start()
+
+    await until(lambda: "server-unreachable" in output.errors)
+    assert server.connections <= 6  # less and less often (after 0.01, 0.03, 0.07, 0.15, 0.31 s), not every 10 ms
+    await controller.stop()
+
+
 async def test_rides_out_a_server_restart_without_telling_the_user(
     controller: ExampleController,
     output: RecordingControllerOutput,

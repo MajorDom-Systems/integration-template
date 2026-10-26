@@ -5,11 +5,14 @@ import contextlib
 
 
 class VirtualServer:
-    """An in-process stand-in for `example_server()`: records the lines it receives and can go away."""
+    """An in-process stand-in for `example_server()`: echoes and records the lines it receives, and can go away or hang
+    up on every client."""
 
     def __init__(self):
         self.port = 0
         self.lines: list[str] = []
+        self.connections = 0
+        self.is_hanging_up = False  # closes every connection before it answers, e.g. it refuses the client
         self._server: asyncio.Server | None = None
         self._clients: set[asyncio.StreamWriter] = set()  # the connected ones
 
@@ -41,11 +44,14 @@ class VirtualServer:
                 await asyncio.sleep(0.01)
 
     async def _serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        self.connections += 1
         self._clients.add(writer)
         try:
             with contextlib.suppress(ConnectionError):
-                while line := await reader.readline():
+                while not self.is_hanging_up and (line := await reader.readline()):
                     self.lines.append(line.decode().strip())
+                    writer.write(line)
+                    await writer.drain()
         finally:  # the client went: stop writing to it
             self._clients.discard(writer)
             writer.close()

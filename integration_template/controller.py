@@ -75,6 +75,7 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
     _RECONNECT_DELAY = 1.0  # seconds, doubled after every failed attempt
     _RECONNECT_DELAY_MAX = 30.0
     _UNREACHABLE_AFTER = 15.0  # seconds away before the user is told
+    _ANSWER_TIMEOUT = 10.0  # seconds a server may take to answer a new connection
 
     def __init__(self, platform: Platform, *, settings: Settings | None = None):
         super().__init__(platform, settings=settings)
@@ -135,6 +136,11 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
         url = urlsplit(self.peripherals.endpoint("example").url)  # never build it yourself: the port may differ
         reader, self._writer = await asyncio.open_connection(url.hostname, url.port)
         await self._sync_with_server(self._writer)
+        # Connected once it answers (here the echo of its name; yours may greet first). One that hangs up before (it
+        # refused the client, a proxy without its backend) or keeps silent isn't back: a failed attempt.
+        async with asyncio.timeout(self._ANSWER_TIMEOUT):  # TimeoutError is an OSError
+            if not await reader.readline():
+                raise ConnectionResetError("the server hung up before it answered")
         return reader
 
     def _disconnect(self):
@@ -173,6 +179,7 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
             try:
                 reader = await self._connect()
             except OSError as error:
+                self._disconnect()  # a connection it hung up
                 logger.info(f"[{self.name}] the server is not back yet: {error!r}")
                 if not is_reported and loop.time() - lost_at >= self._UNREACHABLE_AFTER:
                     message = "Lost the connection to the Example server, reconnecting."
