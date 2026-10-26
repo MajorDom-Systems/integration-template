@@ -5,8 +5,8 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
-from majordom_integration_sdk import Need, Peripherals
-from majordom_integration_sdk.runtime import PeripheralState, Pinned, Runtime, StatusKind
+from majordom_integration_sdk import Need
+from majordom_integration_sdk.runtime import PeripheralState, Runtime, StatusKind
 from majordom_integration_sdk.testing import (
     FakeCompose,
     FakePeripheral,
@@ -22,22 +22,12 @@ from tests.virtual_server import VirtualServer
 
 
 async def test_is_restarted_when_it_cant_go_on(
-    tmp_path: Path,
+    runtime: Runtime,
     controller: ExampleController,
-    bound: Peripherals,
     output: RecordingControllerOutput,
+    statuses: RecordingRuntimeOutput,
     server: VirtualServer,
 ):
-    statuses = RecordingRuntimeOutput()
-    runtime = Runtime(
-        tmp_path,
-        [Pinned(bound.endpoint("example")), controller],
-        platform=controller.platform,
-        controller_output=output,
-        output=statuses,
-        retry_delays=(0.01, 0.01, 0.01),  # the Hub waits 5, 30, 120 s
-    )
-    await runtime.start()
     await server.received("name MajorDom")
     await server.send(b"x" * 70_000)
     await until(lambda: server.lines.count("name MajorDom") == 2)  # started again: it connected anew
@@ -45,7 +35,6 @@ async def test_is_restarted_when_it_cant_go_on(
     waited = [s for key, s in statuses.statuses if key == controller.key and s.kind == StatusKind.RETRYING]
     assert waited and waited[0].state == PeripheralState.WAITING  # after a delay, then failed if it keeps crashing
     assert waited[0].detail.startswith(output.errors["crashed"].message)
-    await runtime.stop()
 
 
 async def test_is_restarted_for_a_new_region_only(runtime: Runtime, server: VirtualServer):
@@ -66,9 +55,11 @@ async def test_recreates_the_server_with_new_settings(tmp_path: Path):
         return rendered["services"]["example-server"]["command"][-1]
 
     await runtime.start()
-    await until(lambda: runtime.status(server).state == PeripheralState.RUNNING)
-    assert greeting() == "hello"
-    await runtime.update_settings(server, {"greeting": "hi"})
-    await until(lambda: greeting() == "hi")
-    assert controller.calls == ["start"]  # not restarted with it: the controller reconnects
-    await runtime.stop()
+    try:
+        await until(lambda: runtime.status(server).state == PeripheralState.RUNNING)
+        assert greeting() == "hello"
+        await runtime.update_settings(server, {"greeting": "hi"})
+        await until(lambda: greeting() == "hi")
+        assert controller.calls == ["start"]  # not restarted with it: the controller reconnects
+    finally:
+        await runtime.stop()

@@ -30,7 +30,7 @@ from majordom_integration_sdk.schemas.parameter import (
     ParameterState,
     ParameterVisibility,
 )
-from majordom_integration_sdk.testing import RecordingControllerOutput, build_test_platform
+from majordom_integration_sdk.testing import RecordingControllerOutput, RecordingRuntimeOutput, build_test_platform
 
 from integration_template import ExampleController
 from tests.support import until
@@ -75,13 +75,29 @@ def controller(platform: Platform, bound: Peripherals, output: RecordingControll
 
 
 @pytest.fixture
+def statuses() -> RecordingRuntimeOutput:
+    """Records the statuses the runtime gives the controller, where the Hub would show them."""
+    return RecordingRuntimeOutput()
+
+
+@pytest.fixture
 async def runtime(
-    tmp_path: Path, controller: ExampleController, bound: Peripherals, output: RecordingControllerOutput
+    tmp_path: Path,
+    controller: ExampleController,
+    bound: Peripherals,
+    output: RecordingControllerOutput,
+    statuses: RecordingRuntimeOutput,
 ) -> AsyncIterator[Runtime]:
     """The controller run as the Hub runs it, once it runs: its need pinned to the virtual server (the Hub runs
-    `example_server()` instead), what it reports going to `output`."""
-    pinned = Pinned(bound.endpoint("example"))
-    runtime = Runtime(tmp_path, [pinned, controller], platform=controller.platform, controller_output=output)
+    `example_server()` instead), what it reports going to `output`, its statuses to `statuses`."""
+    runtime = Runtime(
+        tmp_path,
+        [Pinned(bound.endpoint("example")), controller],
+        platform=controller.platform,
+        controller_output=output,
+        output=statuses,
+        retry_delays=(0.01, 0.01, 0.01),  # the Hub waits 5, 30, 120 s
+    )
     await runtime.start()
     await until(lambda: runtime.status(controller).state == PeripheralState.RUNNING)
     yield runtime
