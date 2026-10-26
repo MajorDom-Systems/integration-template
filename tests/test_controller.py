@@ -1,8 +1,8 @@
 """Tests that drive the controller through its lifecycle.
 
 These are **prefilled to fail** against the unimplemented skeleton: every test below calls a
-method that still raises `NotImplementedError`, so CI stays red until you implement the
-controller.
+method that still raises `NotImplementedError` (or asserts what the skeleton leaves out), so CI
+stays red until you implement the controller.
 
 Run these against a **virtual / simulated device** — a fake endpoint that speaks your
 protocol in-process (no real hardware, no network), so CI is deterministic. Add a fixture
@@ -67,6 +67,20 @@ async def test_identifies(controller: ExampleController, device: Device):
     await controller.identify(device)
     # TODO: assert the virtual device recorded an identify request (e.g. its identify counter
     #   incremented / the identify command was received).
+
+
+async def test_reports_the_paired_devices_connected_at_start(
+    controller: ExampleController, output: RecordingControllerOutput, device: Device
+):
+    # The Hub marks an integration's devices unavailable when it stops: each start tells it which ones answer again
+    await controller.start()
+    await controller.stop()
+    output.connected_devices.clear()
+    await controller.start()
+    try:
+        assert device.id in output.connected_devices
+    finally:
+        await controller.stop()
 
 
 async def test_unpairs(controller: ExampleController, device: Device):

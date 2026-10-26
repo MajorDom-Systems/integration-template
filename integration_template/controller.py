@@ -94,6 +94,8 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
         # Register with discovery (needed as peripherals), subscribe to protocol events, and reconcile the
         # state of already-paired devices here.
         # e.g. async with self.platform.device_repository(self) as repository: paired = await repository.get_all()
+        # Then report every paired device that answers: the Hub marked them all unavailable when the integration
+        # stopped. e.g. await self.output.controller_did_connect_device(self, device.id)
         # e.g. with Need("mdns", ["zeroconf"]) in `needs`:
         # self._cancel_zeroconf = self.peripherals.instance("mdns").register(self, {"_example._tcp.local."})
         reader = await self._connect()  # raising here has the Hub retry start()
