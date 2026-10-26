@@ -44,7 +44,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
-          # No `cache: poetry` — the template gitignores poetry.lock, so there's nothing to key on.
+          cache: poetry  # keyed on the tracked poetry.lock
       - name: Install dependencies
         run: poetry install
       - name: Lint & type-check (full tree, including the skeleton tests)
