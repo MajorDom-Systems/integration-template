@@ -9,7 +9,7 @@ from majordom_integration_sdk import IntegrationError
 from majordom_integration_sdk.testing import RecordingControllerOutput
 
 from integration_template import ExampleController
-from tests.conftest import VirtualServer
+from tests.virtual_server import VirtualServer
 
 
 async def test_connects_through_its_link_and_configures_the_server(

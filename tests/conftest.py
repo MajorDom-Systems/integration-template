@@ -15,8 +15,6 @@ would, so the controller sees realistic state — the tests never make the integ
 persist a device itself.
 """
 
-import asyncio
-import contextlib
 from collections.abc import AsyncIterator
 from uuid import uuid4
 
@@ -32,42 +30,9 @@ from majordom_integration_sdk.schemas.parameter import (
 from majordom_integration_sdk.testing import RecordingControllerOutput, build_test_platform
 
 from integration_template import ExampleController
+from tests.virtual_server import VirtualServer
 
 INTEGRATION = ExampleController.slug()  # its key, which the Hub scopes its devices by
-
-
-class VirtualServer:
-    """An in-process stand-in for `example_server()`: records the lines it receives and can go away."""
-
-    def __init__(self):
-        self.port = 0
-        self.lines: list[str] = []
-        self._server: asyncio.Server | None = None
-        self._clients: list[asyncio.StreamWriter] = []
-
-    async def start(self):
-        self._server = await asyncio.start_server(self._serve, "127.0.0.1", self.port)
-        self.port = self._server.sockets[0].getsockname()[1]  # the same one again after a restart
-
-    async def stop(self):
-        for client in self._clients:
-            client.close()
-        self._clients.clear()
-        if self._server:
-            self._server.close()
-            await self._server.wait_closed()
-            self._server = None
-
-    async def received(self, line: str):
-        async with asyncio.timeout(2):
-            while line not in self.lines:
-                await asyncio.sleep(0.01)
-
-    async def _serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        self._clients.append(writer)
-        with contextlib.suppress(ConnectionError):
-            while line := await reader.readline():
-                self.lines.append(line.decode().strip())
 
 
 @pytest.fixture
@@ -92,15 +57,15 @@ def output() -> RecordingControllerOutput:
 
 
 @pytest.fixture
-def peripherals(server: VirtualServer) -> Peripherals:
+def bound(server: VirtualServer) -> Peripherals:
     """The controller's need bound to the virtual server, as the Hub binds it to `example_server()`."""
     return Peripherals({"example": Endpoint("example", "echo", f"tcp://127.0.0.1:{server.port}")})
 
 
 @pytest.fixture
-def controller(platform: Platform, peripherals: Peripherals, output: RecordingControllerOutput) -> ExampleController:
+def controller(platform: Platform, bound: Peripherals, output: RecordingControllerOutput) -> ExampleController:
     controller = ExampleController(platform)
-    controller.peripherals = peripherals  # bound by hand, as in library mode
+    controller.peripherals = bound  # bound by hand, as in library mode
     controller.output = output
     return controller
 
