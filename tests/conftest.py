@@ -20,9 +20,9 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from majordom_integration_sdk import Endpoint, Peripherals, Platform
+from majordom_integration_sdk import Device, Discovery, Endpoint, Peripherals, Platform
 from majordom_integration_sdk.runtime import PeripheralState, Pinned, Runtime
-from majordom_integration_sdk.schemas.device import CredentialsType, Device, DeviceState, Discovery
+from majordom_integration_sdk.schemas.device import CredentialsType, DeviceState
 from majordom_integration_sdk.schemas.parameter import (
     ParameterDataType,
     ParameterRole,

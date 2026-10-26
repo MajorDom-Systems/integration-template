@@ -20,8 +20,7 @@ integration created a device row.
 implement the controller.)
 """
 
-from majordom_integration_sdk.schemas.command import DeviceCommand
-from majordom_integration_sdk.schemas.device import Device, Discovery
+from majordom_integration_sdk import Device, DeviceCommand, Discovery
 from majordom_integration_sdk.schemas.parameter import ParameterState
 from majordom_integration_sdk.testing import RecordingControllerOutput
 

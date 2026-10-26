@@ -12,17 +12,23 @@ host (`self.platform`: its facts, the device repository and a documents folder),
 reports back to the Hub through `self.output` (a `ControllerOutput`).
 """
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import logging
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from majordom_integration_sdk import AbstractController, IntegrationError, Need, Platform
-from majordom_integration_sdk.schemas.command import DeviceCommand
-from majordom_integration_sdk.schemas.device import Device, Discovery, Parameter, ProvidedCredentials
+from majordom_integration_sdk import (
+    AbstractController,
+    Device,
+    DeviceCommand,
+    Discovery,
+    IntegrationError,
+    Need,
+    Parameter,
+    Platform,
+    ProvidedCredentials,
+)
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -38,14 +44,6 @@ logger = logging.getLogger(__name__)
 
 class ExampleController(AbstractController[Device, Parameter, "ExampleController.Settings"]):
     """Bridges the Example protocol into MajorDom."""
-
-    def __init__(self, platform: Platform, *, settings: Settings | None = None):
-        super().__init__(platform, settings=settings)
-        self._discoveries: dict[UUID, Discovery] = {}
-        # What start() sets up: stop() leaves them as here, also after a start that failed half-way
-        self._writer: asyncio.StreamWriter | None = None  # to the server, while connected
-        self._keeper: asyncio.Task[None] | None = None
-        # e.g. self._cancel_zeroconf: Callable[[], None] | None = None
 
     # Shown to the user, and its identity: its slug is the key the integration's devices, settings and folder are
     # kept by. Never rename it once released.
@@ -72,6 +70,14 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
 
     _RECONNECT_DELAY = 1.0  # seconds, doubled after every failed attempt
     _RECONNECT_DELAY_MAX = 30.0
+
+    def __init__(self, platform: Platform, *, settings: Settings | None = None):
+        super().__init__(platform, settings=settings)
+        self._discoveries: dict[UUID, Discovery] = {}
+        # What start() sets up: stop() leaves them as here, also after a start that failed half-way
+        self._writer: asyncio.StreamWriter | None = None  # to the server, while connected
+        self._keeper: asyncio.Task[None] | None = None
+        # e.g. self._cancel_zeroconf: Callable[[], None] | None = None
 
     @property
     def discoveries(self) -> dict[UUID, Discovery]:
