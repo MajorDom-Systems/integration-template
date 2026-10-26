@@ -9,6 +9,7 @@ from majordom_integration_sdk import IntegrationError
 from majordom_integration_sdk.testing import RecordingControllerOutput
 
 from integration_template import ExampleController
+from tests.support import until
 from tests.virtual_server import VirtualServer
 
 
@@ -24,6 +25,25 @@ async def test_applies_a_new_server_name_in_place(controller: ExampleController,
     await controller.start()
     before, controller.settings = controller.settings, ExampleController.Settings(server_name="Attic")
     assert await controller.settings_did_change(before)
+    await server.received("name Attic")
+    await controller.stop()
+
+
+async def test_takes_a_new_server_name_while_the_server_is_away(
+    controller: ExampleController,
+    output: RecordingControllerOutput,
+    server: VirtualServer,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.01)
+    await controller.start()
+    await server.received("name MajorDom")
+    await server.stop()  # e.g. its container restarts
+    await until(lambda: "server-unreachable" in output.errors)
+
+    before, controller.settings = controller.settings, ExampleController.Settings(server_name="Attic")
+    assert await controller.settings_did_change(before)  # no restart: it hands the name over once reconnected
+    await server.start()
     await server.received("name Attic")
     await controller.stop()
 

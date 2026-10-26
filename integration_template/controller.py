@@ -91,7 +91,8 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
 
     async def settings_did_change(self, before: Settings) -> bool:
         if self.settings.server_name != before.server_name:
-            await self._sync_with_server()
+            with contextlib.suppress(OSError):  # the server is away: the keeper hands it the name on reconnect
+                await self._sync_with_server()
         return True
 
     async def platform_facts_did_change(self, before: Platform) -> bool:
