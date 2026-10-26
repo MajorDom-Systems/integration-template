@@ -21,9 +21,7 @@ from collections.abc import AsyncIterator
 from uuid import uuid4
 
 import pytest
-from majordom_integration_sdk import Endpoint
-from majordom_integration_sdk.controller import Platform
-from majordom_integration_sdk.peripherals import Peripherals
+from majordom_integration_sdk import Endpoint, Peripherals, Platform
 from majordom_integration_sdk.schemas.device import CredentialsType, Device, DeviceState, Discovery
 from majordom_integration_sdk.schemas.parameter import (
     ParameterDataType,
@@ -31,11 +29,11 @@ from majordom_integration_sdk.schemas.parameter import (
     ParameterState,
     ParameterVisibility,
 )
-from majordom_integration_sdk.testing import build_test_platform
+from majordom_integration_sdk.testing import RecordingControllerOutput, build_test_platform
 
 from integration_template import ExampleController
 
-INTEGRATION = ExampleController.name  # what the Hub scopes its devices by
+INTEGRATION = ExampleController.slug()  # its key, which the Hub scopes its devices by
 
 
 class VirtualServer:
@@ -81,9 +79,16 @@ async def server() -> AsyncIterator[VirtualServer]:
 
 
 @pytest.fixture
-def deps() -> Platform:
-    """The SDK's test platform (recording output + in-memory repo), as the Hub gives it to every integration."""
+def platform() -> Platform:
+    """The SDK's test platform (in-memory device repository, the host's facts), as the Hub gives it to every
+    integration."""
     return build_test_platform()
+
+
+@pytest.fixture
+def output() -> RecordingControllerOutput:
+    """Records what the controller reports, where the Hub would hear it."""
+    return RecordingControllerOutput()
 
 
 @pytest.fixture
@@ -93,9 +98,10 @@ def peripherals(server: VirtualServer) -> Peripherals:
 
 
 @pytest.fixture
-def controller(deps: Platform, peripherals: Peripherals) -> ExampleController:
-    controller = ExampleController(deps)
+def controller(platform: Platform, peripherals: Peripherals, output: RecordingControllerOutput) -> ExampleController:
+    controller = ExampleController(platform)
     controller.peripherals = peripherals  # bound by hand, as in library mode
+    controller.output = output
     return controller
 
 
@@ -103,7 +109,7 @@ def controller(deps: Platform, peripherals: Peripherals) -> ExampleController:
 # hardware, no network) so tests are deterministic and can assert what actually reached the
 # device. Stand one up here and have the controller talk to it (e.g. via a base URL / mock
 # transport injected through the controller). Tests then assert on both the controller's
-# reports (deps.output) and this object's observed state.
+# reports (output) and this object's observed state.
 #
 # @pytest.fixture
 # def virtual_device():
@@ -113,9 +119,9 @@ def controller(deps: Platform, peripherals: Peripherals) -> ExampleController:
 #     dev.stop()
 
 
-async def _seed(deps: Platform, device: DeviceState):
+async def _seed(controller: ExampleController, device: DeviceState):
     """Persist a device the way the Hub would, before handing control to the integration."""
-    async with deps.make_device_repository(INTEGRATION) as repo:
+    async with controller.platform.device_repository(controller) as repo:
         await repo.save(device)
 
 
@@ -135,7 +141,7 @@ def discovery() -> Discovery:
 
 
 @pytest.fixture
-async def provisional_device(deps: Platform, discovery: Discovery) -> DeviceState:
+async def provisional_device(controller: ExampleController, discovery: Discovery) -> DeviceState:
     """The device as it exists when the Hub calls `pair_device`.
 
     Before pairing, the Hub has already created the row from the user's input: name and room
@@ -152,12 +158,12 @@ async def provisional_device(deps: Platform, discovery: Discovery) -> DeviceStat
         manufacturer=discovery.device_manufacturer,
         parameters=[],
     )
-    await _seed(deps, device)
+    await _seed(controller, device)
     return device
 
 
 @pytest.fixture
-async def device_state(deps: Platform) -> DeviceState:
+async def device_state(controller: ExampleController) -> DeviceState:
     """An already-paired device with one on/off parameter, as the Hub *stores* it (the full
     state, with parameters). Seeded into the repository."""
     power = ParameterState(
@@ -178,7 +184,7 @@ async def device_state(deps: Platform) -> DeviceState:
         manufacturer="ACME",
         parameters=[power],
     )
-    await _seed(deps, state)
+    await _seed(controller, state)
     return state
 
 

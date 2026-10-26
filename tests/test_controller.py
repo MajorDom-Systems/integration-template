@@ -7,7 +7,7 @@ controller.
 Run these against a **virtual / simulated device** — a fake endpoint that speaks your
 protocol in-process (no real hardware, no network), so CI is deterministic. Add a fixture
 for it in `conftest.py` and have the controller talk to it. Each test should then assert on
-**both sides**: what the controller reported back to the Hub (via `deps.output`) *and* what
+**both sides**: what the controller reported back to the Hub (via `output`) *and* what
 actually landed on the device (the virtual device observed the command / changed state) —
 don't just call the method and assume it worked.
 
@@ -20,17 +20,17 @@ integration created a device row.
 implement the controller.)
 """
 
-from majordom_integration_sdk.controller import Platform
 from majordom_integration_sdk.schemas.command import DeviceCommand
 from majordom_integration_sdk.schemas.device import Device, Discovery
 from majordom_integration_sdk.schemas.parameter import ParameterState
+from majordom_integration_sdk.testing import RecordingControllerOutput
 
 from integration_template import ExampleController
 
 
 async def test_pairs_a_discovered_device(
     controller: ExampleController,
-    deps: Platform,
+    output: RecordingControllerOutput,
     discovery: Discovery,
     provisional_device: Device,  # creates a device with discovery.id and saves it to the db
 ):
@@ -38,7 +38,7 @@ async def test_pairs_a_discovered_device(
     await controller.pair_device(discovery, credentials=None)
     # TODO: verify pairing actually completed — the controller established the session and
     #   reported back (it does not persist the device itself):
-    #   - Hub side: `discovery.id` is in `deps.output.connected_devices`.
+    #   - Hub side: `discovery.id` is in `output.connected_devices`.
     #   - Device side: the virtual device accepted the credentials / opened a session.
     #   - Parameters: if you map parameters during pairing, assert their initial states were
     #     written via the repository (`repo.save_parameter_state`).
@@ -46,12 +46,12 @@ async def test_pairs_a_discovered_device(
 
 async def test_fetches_state(
     controller: ExampleController,
-    deps: Platform,
+    output: RecordingControllerOutput,
     device: Device,
 ):
     await controller.fetch(device)
     # TODO: verify the refresh reached the device and propagated back:
-    #   - Set a known state on the virtual device first, then assert `deps.output.events`
+    #   - Set a known state on the virtual device first, then assert `output.events`
     #     (or the repository's parameter states) now reflect exactly that state — not stale
     #     or default values.
 

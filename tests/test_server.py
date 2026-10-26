@@ -1,12 +1,11 @@
-"""The server the integration brings: connecting through its link, the settings and context hooks,
+"""The server the integration brings: connecting through its link, the settings and platform facts hooks,
 and healing when the server goes away."""
 
 import asyncio
-from typing import cast
+from dataclasses import replace
 
 import pytest
-from majordom_integration_sdk import Context, IntegrationError
-from majordom_integration_sdk.controller import Platform
+from majordom_integration_sdk import IntegrationError
 from majordom_integration_sdk.testing import RecordingControllerOutput
 
 from integration_template import ExampleController
@@ -29,13 +28,14 @@ async def test_applies_a_new_server_name_in_place(controller: ExampleController,
     await controller.stop()
 
 
-async def test_asks_for_a_restart_when_the_context_changes(controller: ExampleController):
-    assert not await controller.context_did_change(Context(region="Europe"))
+async def test_asks_for_a_restart_when_the_platform_facts_change(controller: ExampleController):
+    before, controller.platform = controller.platform, replace(controller.platform, region="Europe")
+    assert not await controller.platform_facts_did_change(before)
 
 
 async def test_reconnects_when_the_server_comes_back(
     controller: ExampleController,
-    deps: Platform,
+    output: RecordingControllerOutput,
     server: VirtualServer,
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -50,7 +50,6 @@ async def test_reconnects_when_the_server_comes_back(
     await server.start()
 
     await server.received("name MajorDom")
-    output = cast(RecordingControllerOutput, deps.output)
     async with asyncio.timeout(1):
         while output.errors:  # resolved once connected again
             await asyncio.sleep(0.01)
