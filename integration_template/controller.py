@@ -162,7 +162,9 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
             while True:
                 await self._listen(reader)
                 self._disconnect()
+                # The devices behind it are out of reach now: e.g. controller_did_lose_device for each
                 reader = await self._reconnect()
+                # Back: e.g. controller_did_connect_device for each that answers again
         except Exception:  # a bug rather than an outage: the Hub restarts the integration, then gives up on it
             logger.exception(f"[{self.name}] stopped listening to the server")
             message = "The connection to the Example server broke unexpectedly."
