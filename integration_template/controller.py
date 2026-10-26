@@ -59,6 +59,7 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
     needs = [Need("example", ["echo"])]
 
     class Settings(BaseModel):
+        # Give every field a default: the Hub builds the controller with them before the user can enter any
         server_name: str = Field("MajorDom", title="Server name", description="How the server introduces itself.")
 
     _RECONNECT_DELAY = 1.0  # seconds, doubled after every failed attempt
