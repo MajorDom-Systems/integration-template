@@ -73,7 +73,7 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
             description="How the server introduces itself.",
         )
 
-    _RECONNECT_DELAY = 1.0  # seconds, doubled after every failed attempt
+    _RECONNECT_DELAY = 1.0  # seconds, doubled after every attempt until a connection holds
     _RECONNECT_DELAY_MAX = 30.0
     _UNREACHABLE_AFTER = 15.0  # seconds away before the user is told
     # Seconds a connection must hold to end an outage (the runtime's stable run): drops in a row add up, so a server
@@ -84,6 +84,7 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
     def __init__(self, platform: Platform, *, settings: Settings | None = None):
         super().__init__(platform, settings=settings)
         self._discoveries: dict[UUID, Discovery] = {}
+        self._reconnect_delay = self._RECONNECT_DELAY  # kept across the drops of an outage: it grows through them
         # What start() sets up: stop() leaves them as here, also after a start that failed half-way
         self._writer: asyncio.StreamWriter | None = None  # to the server, while connected
         self._keeper: asyncio.Task[None] | None = None
@@ -173,6 +174,7 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
                 # The devices behind it are out of reach now: e.g. controller_did_lose_device for each
                 if lost_at is None or loop.time() - connected_at >= self._STABLE_CONNECTION:
                     lost_at = loop.time()  # a new outage, else the last one goes on
+                    self._reconnect_delay = self._RECONNECT_DELAY
                 reader = await self._reconnect(lost_at)
                 # Back: e.g. controller_did_connect_device for each that answers again
         except Exception:  # a bug rather than an outage: the Hub restarts the integration, then gives up on it
@@ -185,7 +187,7 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
         """Tries again, less and less often, until the server is back. Tells the user only once it was away for a
         while: a server restarting on purpose (e.g. recreated with new settings) is usually back well before."""
         loop = asyncio.get_running_loop()
-        delay, is_reported = self._RECONNECT_DELAY, False
+        is_reported = False
         while True:
             # Also before the first try: a drop soon after another one is reported at once
             if not is_reported and loop.time() - lost_at >= self._UNREACHABLE_AFTER:
@@ -193,13 +195,13 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
                 lost = IntegrationError("server-unreachable", message)
                 await self.output.controller_did_encounter_error(self, lost)
                 is_reported = True
-            await asyncio.sleep(delay)
+            await asyncio.sleep(self._reconnect_delay)
+            self._reconnect_delay = min(self._reconnect_delay * 2, self._RECONNECT_DELAY_MAX)
             try:
                 reader = await self._connect()
             except OSError as error:
                 self._disconnect()  # a connection it hung up
                 logger.info(f"[{self.name}] the server is not back yet: {error!r}")
-                delay = min(delay * 2, self._RECONNECT_DELAY_MAX)
             else:
                 if is_reported:  # the devices work again, though the outage lasts until the connection holds
                     await self.output.controller_did_resolve_error(self, "server-unreachable")

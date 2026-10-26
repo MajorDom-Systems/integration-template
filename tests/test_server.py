@@ -176,6 +176,20 @@ async def test_reports_a_server_that_drops_every_time_it_answers(
     await controller.stop()
 
 
+async def test_tries_a_server_that_drops_every_time_it_answers_less_and_less_often(
+    controller: ExampleController,
+    server: VirtualServer,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.01)
+    server.is_dropping = True  # every reconnect works, none holds
+    await controller.start()
+
+    await asyncio.sleep(0.3)
+    assert server.connections <= 6  # one outage: back after 0.01, 0.03, 0.07, 0.15 s, not every 10 ms
+    await controller.stop()
+
+
 async def test_a_server_lost_long_after_it_came_back_is_a_new_outage(
     controller: ExampleController,
     output: RecordingControllerOutput,
