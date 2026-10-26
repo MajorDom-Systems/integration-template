@@ -105,7 +105,8 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
 
     async def stop(self):
         # Cancel tasks and release every held resource, also after a start that failed half-way: the Hub stops it then
-        # too, and starts the same object again later.
+        # too, and starts the same object again later. Nothing in flight may take resources after it: a pairing that
+        # finishes later is refused and undone (see pair_device).
         # e.g. if self._cancel_zeroconf:
         #     self._cancel_zeroconf()
         #     self._cancel_zeroconf = None
@@ -209,6 +210,8 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
         # await self.output.controller_did_connect_device(self, self.device_uuid(...))
         # Keep what the protocol needs across restarts beyond the device database (keys, certificates)
         # in self.platform.documents_folder(self).
+        # Refuse to finish (and undo it) once stop() ran, also if start() ran again since: the Hub would never save
+        # it. e.g. capture a run token that start() renews when pairing begins, and check it before reporting.
         raise NotImplementedError
 
     async def unpair(self, device: Device):
