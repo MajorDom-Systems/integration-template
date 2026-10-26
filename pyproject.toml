@@ -2,7 +2,7 @@
 # `integration_template/` package directory (import name, underscores) to your own — by
 # convention `majordom-<protocol>` / `majordom_<protocol>` (e.g. majordom-homekit /
 # majordom_homekit). Keep them matching so poetry-core auto-detects the package, and update
-# `pypi-package-name` in the release stub + `--cov=` below to match.
+# `--cov=` below to match.
 [project]
 name = "integration-template"
 version = "0.1.0"
