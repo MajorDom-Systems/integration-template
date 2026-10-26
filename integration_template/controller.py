@@ -42,6 +42,9 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
     def __init__(self, platform: Platform, *, settings: Settings | None = None):
         super().__init__(platform, settings=settings)
         self._discoveries: dict[UUID, Discovery] = {}
+        # What start() sets up: stop() leaves them as here, also after a start that failed half-way
+        self._writer: asyncio.StreamWriter | None = None  # to the server, while connected
+        self._keeper: asyncio.Task[None] | None = None
         # e.g. self._cancel_zeroconf: Callable[[], None] | None = None
 
     name = "Example"
@@ -74,25 +77,30 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
         # e.g. async with self.platform.device_repository(self) as repository: paired = await repository.get_all()
         # e.g. with Need("mdns", ["zeroconf"]) in `needs`:
         # self._cancel_zeroconf = self.peripherals.instance("mdns").register(self, {"_example._tcp.local."})
-        await self._connect()  # raising here has the Hub retry start()
-        self._keeper = asyncio.create_task(self._stay_connected())
+        reader = await self._connect()  # raising here has the Hub retry start()
+        self._keeper = asyncio.create_task(self._stay_connected(reader))
 
     async def stop(self):
-        # Cancel tasks and release every held resource.
-        # e.g. if self._cancel_zeroconf: self._cancel_zeroconf()
-        self._keeper.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self._keeper
-        self._writer.close()
+        # Cancel tasks and release every held resource, also after a start that failed half-way: the Hub stops it then
+        # too, and starts the same object again later.
+        # e.g. if self._cancel_zeroconf:
+        #     self._cancel_zeroconf()
+        #     self._cancel_zeroconf = None
+        if self._keeper:
+            self._keeper.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._keeper
+            self._keeper = None
+        self._disconnect()
 
     # Hooks: return True when applied in place, False to have the Hub restart the integration. The
     # defaults: settings_did_change and needed_peripheral_did_change (a need moved, or an optional one
     # appeared) restart it; platform_facts_did_change doesn't.
 
     async def settings_did_change(self, before: Settings) -> bool:
-        if self.settings.server_name != before.server_name:
+        if self.settings.server_name != before.server_name and self._writer:
             with contextlib.suppress(OSError):  # the server is away: the keeper hands it the name on reconnect
-                await self._sync_with_server()
+                await self._sync_with_server(self._writer)
         return True
 
     async def platform_facts_did_change(self, before: Platform) -> bool:
@@ -100,41 +108,47 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
 
     # Server ------------------------------------------------------------------
 
-    async def _connect(self):
+    async def _connect(self) -> asyncio.StreamReader:
         url = urlsplit(self.peripherals.endpoint("example").url)  # never build it yourself: the port may differ
-        self._reader, self._writer = await asyncio.open_connection(url.hostname, url.port)
-        await self._sync_with_server()
+        reader, self._writer = await asyncio.open_connection(url.hostname, url.port)
+        await self._sync_with_server(self._writer)
+        return reader
 
-    async def _sync_with_server(self):
+    def _disconnect(self):
+        if self._writer:
+            self._writer.close()
+            self._writer = None
+
+    async def _sync_with_server(self, writer: asyncio.StreamWriter):
         """Hands the server its configuration; on every (re)connect."""
-        self._writer.write(f"name {self.settings.server_name}\n".encode())
+        writer.write(f"name {self.settings.server_name}\n".encode())
         if region := self.platform.region:
-            self._writer.write(f"region {region}\n".encode())
-        await self._writer.drain()
+            writer.write(f"region {region}\n".encode())
+        await writer.drain()
 
-    async def _stay_connected(self):
+    async def _stay_connected(self, reader: asyncio.StreamReader):
         """Reconnects whenever the server goes away (e.g. it was restarted) until stop() cancels it,
         so the integration heals by itself instead of being restarted by the Hub."""
         while True:
-            await self._listen()
-            self._writer.close()
+            await self._listen(reader)
+            self._disconnect()
             message = "Lost the connection to the Example server, reconnecting."
             await self.output.controller_did_encounter_error(self, IntegrationError("server-unreachable", message))
             delay = self._RECONNECT_DELAY
             while True:
                 await asyncio.sleep(delay)
                 try:
-                    await self._connect()
+                    reader = await self._connect()
                     break
                 except OSError as error:
                     logger.info(f"[{self.name}] the server is not back yet: {error!r}")
                     delay = min(delay * 2, self._RECONNECT_DELAY_MAX)
             await self.output.controller_did_resolve_error(self, "server-unreachable")
 
-    async def _listen(self):
+    async def _listen(self, reader: asyncio.StreamReader):
         """Reads the server's messages until it closes the connection."""
         with contextlib.suppress(OSError):
-            while line := await self._reader.readline():
+            while line := await reader.readline():
                 # Turn protocol messages into events here: controller_did_receive_events(...)
                 logger.debug(f"[{self.name}] server: {line!r}")
 

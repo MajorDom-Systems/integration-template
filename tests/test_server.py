@@ -21,6 +21,20 @@ async def test_connects_through_its_link_and_configures_the_server(
     await controller.stop()
 
 
+async def test_cant_start_without_the_server_and_starts_again_once_it_is_back(
+    controller: ExampleController, server: VirtualServer
+):
+    await server.stop()
+    with pytest.raises(OSError):
+        await controller.start()  # the runtime tries again later, then gives up
+    await controller.stop()  # the runtime stops it after a failed start, then starts the same object again
+
+    await server.start()
+    await controller.start()
+    await server.received("name MajorDom")
+    await controller.stop()
+
+
 async def test_applies_a_new_server_name_in_place(controller: ExampleController, server: VirtualServer):
     await controller.start()
     before, controller.settings = controller.settings, ExampleController.Settings(server_name="Attic")
