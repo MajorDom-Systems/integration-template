@@ -7,6 +7,7 @@ from dataclasses import replace
 import pytest
 from majordom_integration_sdk import IntegrationError
 from majordom_integration_sdk.testing import RecordingControllerOutput
+from pydantic import ValidationError
 
 from integration_template import ExampleController
 from tests.support import until
@@ -41,6 +42,11 @@ async def test_applies_a_new_server_name_in_place(controller: ExampleController,
     assert await controller.settings_did_change(before)
     await server.received("name Attic")
     await controller.stop()
+
+
+def test_refuses_a_server_name_that_would_break_the_protocol():
+    with pytest.raises(ValidationError):
+        ExampleController.Settings(server_name="Attic\nregion Mars")  # a second command
 
 
 async def test_takes_a_new_server_name_while_the_server_is_away(
