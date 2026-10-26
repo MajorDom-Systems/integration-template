@@ -86,9 +86,26 @@ async def test_reconnects_when_the_server_comes_back(
     await server.start()
 
     await server.received("name MajorDom")
-    async with asyncio.timeout(1):
-        while output.errors:  # resolved once connected again
-            await asyncio.sleep(0.01)
+    await until(lambda: not output.errors)  # resolved once connected again
     lost = IntegrationError("server-unreachable", "Lost the connection to the Example server, reconnecting.")
     assert output.error_log == [lost, "server-unreachable"]
+    await controller.stop()
+
+
+async def test_rides_out_a_quick_server_restart_without_telling_the_user(
+    controller: ExampleController,
+    output: RecordingControllerOutput,
+    server: VirtualServer,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.2)
+    await controller.start()
+    await server.received("name MajorDom")
+
+    await server.stop()  # e.g. recreated with new settings, back before the first attempt
+    server.lines.clear()
+    await server.start()
+
+    await server.received("name MajorDom")
+    assert output.error_log == []
     await controller.stop()

@@ -133,18 +133,28 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
         while True:
             await self._listen(reader)
             self._disconnect()
-            message = "Lost the connection to the Example server, reconnecting."
-            await self.output.controller_did_encounter_error(self, IntegrationError("server-unreachable", message))
-            delay = self._RECONNECT_DELAY
-            while True:
-                await asyncio.sleep(delay)
-                try:
-                    reader = await self._connect()
-                    break
-                except OSError as error:
-                    logger.info(f"[{self.name}] the server is not back yet: {error!r}")
-                    delay = min(delay * 2, self._RECONNECT_DELAY_MAX)
-            await self.output.controller_did_resolve_error(self, "server-unreachable")
+            reader = await self._reconnect()
+
+    async def _reconnect(self) -> asyncio.StreamReader:
+        """Tries again, less and less often, until the server is back. Tells the user only once an attempt failed: a
+        server restarting on purpose (e.g. recreated with new settings) is usually back by the first one."""
+        delay, is_reported = self._RECONNECT_DELAY, False
+        while True:
+            await asyncio.sleep(delay)
+            try:
+                reader = await self._connect()
+            except OSError as error:
+                logger.info(f"[{self.name}] the server is not back yet: {error!r}")
+                if not is_reported:
+                    message = "Lost the connection to the Example server, reconnecting."
+                    lost = IntegrationError("server-unreachable", message)
+                    await self.output.controller_did_encounter_error(self, lost)
+                    is_reported = True
+                delay = min(delay * 2, self._RECONNECT_DELAY_MAX)
+            else:
+                if is_reported:
+                    await self.output.controller_did_resolve_error(self, "server-unreachable")
+                return reader
 
     async def _listen(self, reader: asyncio.StreamReader):
         """Reads the server's messages until it closes the connection."""
