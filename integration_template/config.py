@@ -29,6 +29,8 @@ def example_server() -> Service[ServerSettings]:
         ports={"api": 9000},  # preferred: the runtime picks another one when it's taken
         compose={
             "image": IMAGE,
+            # Make yours listen on 127.0.0.1 only (e.g. zwave-js-server's `--host 127.0.0.1`): the Hub reaches it over
+            # loopback, and nothing guards it on the LAN. This echo server can't choose its address.
             "network_mode": "host",
             "command": ["{ports.api}", "{settings.greeting}"],  # listens on the port the runtime picked
         },
