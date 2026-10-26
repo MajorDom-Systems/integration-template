@@ -5,9 +5,14 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
-from majordom_integration_sdk import Need
-from majordom_integration_sdk.runtime import PeripheralState, Runtime, StatusKind
-from majordom_integration_sdk.testing import FakeCompose, FakePeripheral, RecordingControllerOutput
+from majordom_integration_sdk import Need, Peripherals
+from majordom_integration_sdk.runtime import PeripheralState, Pinned, Runtime, StatusKind
+from majordom_integration_sdk.testing import (
+    FakeCompose,
+    FakePeripheral,
+    RecordingControllerOutput,
+    RecordingRuntimeOutput,
+)
 
 from integration_template import ExampleController
 from integration_template.config import example_server
@@ -16,14 +21,30 @@ from tests.virtual_server import VirtualServer
 
 
 async def test_is_restarted_when_it_cant_go_on(
-    runtime: Runtime, controller: ExampleController, output: RecordingControllerOutput, server: VirtualServer
+    tmp_path: Path,
+    controller: ExampleController,
+    bound: Peripherals,
+    output: RecordingControllerOutput,
+    server: VirtualServer,
 ):
+    statuses = RecordingRuntimeOutput()
+    runtime = Runtime(
+        tmp_path,
+        [Pinned(bound.endpoint("example")), controller],
+        platform=controller.platform,
+        controller_output=output,
+        output=statuses,
+        retry_delays=(0.01, 0.01, 0.01),  # the Hub waits 5, 30, 120 s
+    )
+    await runtime.start()
     await server.received("name MajorDom")
     await server.send(b"x" * 70_000)
-    await until(lambda: runtime.status(controller).kind == StatusKind.RETRYING)
-    status = runtime.status(controller)
-    assert status.state == PeripheralState.WAITING  # started again after a delay, then failed if it keeps crashing
-    assert status.detail.startswith(output.errors["crashed"].message)
+    await until(lambda: server.lines.count("name MajorDom") == 2)  # started again: it connected anew
+    await until(lambda: runtime.status(controller).state == PeripheralState.RUNNING)
+    waited = [s for key, s in statuses.statuses if key == controller.key and s.kind == StatusKind.RETRYING]
+    assert waited and waited[0].state == PeripheralState.WAITING  # after a delay, then failed if it keeps crashing
+    assert waited[0].detail.startswith(output.errors["crashed"].message)
+    await runtime.stop()
 
 
 async def test_is_restarted_for_a_new_region_only(runtime: Runtime, server: VirtualServer):
