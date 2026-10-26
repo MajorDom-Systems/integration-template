@@ -33,6 +33,7 @@ Repository = "https://github.com/MajorDom-Systems/integration-template"
 
 [dependency-groups]
 dev = [
+    "majordom-integration-sdk[runtime,cli]",  # the dev runners, run_controller / run_cli, and the runtime in tests
     "poethepoet (>=0.36.0,<1.0.0)",
     "ty",             # type checker; swap for mypy/pyright by editing the `check` task below
     "ruff",
