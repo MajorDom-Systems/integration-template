@@ -4,8 +4,7 @@ Kept separate from ``test_controller.py`` so the template repo's own CI (which e
 prefilled, expected-to-fail controller suite) still has tests to run and stays green.
 """
 
-from majordom_integration_sdk import Discovery, Service
-from majordom_integration_sdk.testing import build_test_platform
+from majordom_integration_sdk import Discovery, Platform, Service
 
 from integration_template import ExampleController, peripherals
 
@@ -27,7 +26,7 @@ async def test_name_and_key(controller: ExampleController):
     assert controller.key == "example"  # what its devices, settings and folder are kept by
 
 
-def test_exports_its_server_and_the_controller_that_needs_it():
-    server, controller = peripherals(build_test_platform())
+def test_exports_its_server_and_the_controller_that_needs_it(platform: Platform):
+    server, controller = peripherals(platform)
     assert isinstance(server, Service) and isinstance(controller, ExampleController)
     assert any(need.accepts(endpoint) for need in controller.needs for endpoint in server.provides)

@@ -48,10 +48,10 @@ async def server() -> AsyncIterator[VirtualServer]:
 
 
 @pytest.fixture
-def platform() -> Platform:
+def platform(tmp_path: Path) -> Platform:
     """The SDK's test platform (in-memory device repository, the host's facts), as the Hub gives it to every
     integration."""
-    return build_test_platform()
+    return build_test_platform(tmp_path / "documents")  # the folders go with the test
 
 
 @pytest.fixture
