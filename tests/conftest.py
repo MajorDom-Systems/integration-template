@@ -16,10 +16,12 @@ persist a device itself.
 """
 
 from collections.abc import AsyncIterator
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
 from majordom_integration_sdk import Endpoint, Peripherals, Platform
+from majordom_integration_sdk.runtime import PeripheralState, Pinned, Runtime
 from majordom_integration_sdk.schemas.device import CredentialsType, Device, DeviceState, Discovery
 from majordom_integration_sdk.schemas.parameter import (
     ParameterDataType,
@@ -30,6 +32,7 @@ from majordom_integration_sdk.schemas.parameter import (
 from majordom_integration_sdk.testing import RecordingControllerOutput, build_test_platform
 
 from integration_template import ExampleController
+from tests.support import until
 from tests.virtual_server import VirtualServer
 
 INTEGRATION = ExampleController.slug()  # its key, which the Hub scopes its devices by
@@ -68,6 +71,20 @@ def controller(platform: Platform, bound: Peripherals, output: RecordingControll
     controller.peripherals = bound  # bound by hand, as in library mode
     controller.output = output
     return controller
+
+
+@pytest.fixture
+async def runtime(
+    tmp_path: Path, controller: ExampleController, bound: Peripherals, output: RecordingControllerOutput
+) -> AsyncIterator[Runtime]:
+    """The controller run as the Hub runs it, once it runs: its need pinned to the virtual server (the Hub runs
+    `example_server()` instead), what it reports going to `output`."""
+    pinned = Pinned(bound.endpoint("example"))
+    runtime = Runtime(tmp_path, [pinned, controller], platform=controller.platform, controller_output=output)
+    await runtime.start()
+    await until(lambda: runtime.status(controller).state == PeripheralState.RUNNING)
+    yield runtime
+    await runtime.stop()
 
 
 # A virtual / simulated device — a fake endpoint that speaks your protocol in-process (no

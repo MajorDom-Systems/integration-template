@@ -88,8 +88,7 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
         #     self._cancel_zeroconf = None
         if self._keeper:
             self._keeper.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._keeper
+            await asyncio.wait([self._keeper])  # unlike awaiting it, never raises (the keeper reports a crash itself)
             self._keeper = None
         self._disconnect()
 
@@ -130,10 +129,16 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
     async def _stay_connected(self, reader: asyncio.StreamReader):
         """Reconnects whenever the server goes away (e.g. it was restarted) until stop() cancels it,
         so the integration heals by itself instead of being restarted by the Hub."""
-        while True:
-            await self._listen(reader)
-            self._disconnect()
-            reader = await self._reconnect()
+        try:
+            while True:
+                await self._listen(reader)
+                self._disconnect()
+                reader = await self._reconnect()
+        except Exception:  # a bug rather than an outage: the Hub restarts the integration, then gives up on it
+            logger.exception(f"[{self.name}] stopped listening to the server")
+            message = "The connection to the Example server broke unexpectedly."
+            crashed = IntegrationError("crashed", message, is_still_running=False)
+            await self.output.controller_did_encounter_error(self, crashed)
 
     async def _reconnect(self) -> asyncio.StreamReader:
         """Tries again, less and less often, until the server is back. Tells the user only once an attempt failed: a
@@ -161,6 +166,7 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
         with contextlib.suppress(OSError):
             while line := await reader.readline():
                 # Turn protocol messages into events here: controller_did_receive_events(...)
+                # Log and skip one you can't take: whatever raises here has the Hub restart the integration.
                 logger.debug(f"[{self.name}] server: {line!r}")
 
     # Hub -> device ---------------------------------------------------------

@@ -26,6 +26,11 @@ class VirtualServer:
             await self._server.wait_closed()
             self._server = None
 
+    async def send(self, line: bytes):
+        for client in self._clients:
+            client.write(line + b"\n")
+            await client.drain()
+
     async def received(self, line: str):
         async with asyncio.timeout(2):
             while line not in self.lines:

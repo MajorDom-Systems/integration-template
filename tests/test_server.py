@@ -62,6 +62,17 @@ async def test_takes_a_new_server_name_while_the_server_is_away(
     await controller.stop()
 
 
+async def test_tells_the_hub_it_cant_go_on_when_it_cant_take_a_message(
+    controller: ExampleController, output: RecordingControllerOutput, server: VirtualServer
+):
+    await controller.start()
+    await server.received("name MajorDom")
+    await server.send(b"x" * 70_000)  # longer than a line may be: a message it can't take
+    await until(lambda: "crashed" in output.errors)
+    assert not output.errors["crashed"].is_still_running  # the Hub restarts it
+    await controller.stop()
+
+
 async def test_asks_for_a_restart_only_for_a_new_region(controller: ExampleController):
     before, controller.platform = controller.platform, replace(controller.platform, thread_dataset="0e08000000")
     assert await controller.platform_facts_did_change(before)  # not its concern: it goes on
