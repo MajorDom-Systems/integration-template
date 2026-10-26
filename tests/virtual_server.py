@@ -6,13 +6,14 @@ import contextlib
 
 class VirtualServer:
     """An in-process stand-in for `example_server()`: echoes and records the lines it receives, and can go away or hang
-    up on every client."""
+    up on every client, before or after it answers."""
 
     def __init__(self):
         self.port = 0
         self.lines: list[str] = []
         self.connections = 0
         self.is_hanging_up = False  # closes every connection before it answers, e.g. it refuses the client
+        self.is_dropping = False  # closes every connection once it answered, e.g. it crashes on what follows
         self._server: asyncio.Server | None = None
         self._clients: set[asyncio.StreamWriter] = set()  # the connected ones
 
@@ -52,6 +53,8 @@ class VirtualServer:
                     self.lines.append(line.decode().strip())
                     writer.write(line)
                     await writer.drain()
+                    if self.is_dropping:
+                        break
         finally:  # the client went: stop writing to it
             self._clients.discard(writer)
             writer.close()

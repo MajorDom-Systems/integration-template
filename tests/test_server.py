@@ -157,3 +157,43 @@ async def test_rides_out_a_server_restart_without_telling_the_user(
     await server.received("name MajorDom")
     assert output.error_log == []  # told only once it was away for about 15 s
     await controller.stop()
+
+
+async def test_reports_a_server_that_drops_every_time_it_answers(
+    controller: ExampleController,
+    output: RecordingControllerOutput,
+    server: VirtualServer,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.01)
+    monkeypatch.setattr(ExampleController, "_UNREACHABLE_AFTER", 0.1)
+    server.is_dropping = True  # every reconnect works, none holds
+    await controller.start()
+
+    await until(lambda: "server-unreachable" in output.error_log)  # the drops added up to an outage
+    lost = IntegrationError("server-unreachable", "Lost the connection to the Example server, reconnecting.")
+    assert output.error_log[:2] == [lost, "server-unreachable"]  # cleared at the reconnect: the devices work again
+    await controller.stop()
+
+
+async def test_a_server_lost_long_after_it_came_back_is_a_new_outage(
+    controller: ExampleController,
+    output: RecordingControllerOutput,
+    server: VirtualServer,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.01)
+    monkeypatch.setattr(ExampleController, "_UNREACHABLE_AFTER", 0.2)
+    monkeypatch.setattr(ExampleController, "_STABLE_CONNECTION", 0.1)
+    await controller.start()
+    await server.received("name MajorDom")
+    await server.stop()
+    server.lines.clear()
+    await server.start()
+    await server.received("name MajorDom")
+
+    await asyncio.sleep(0.25)  # held: that outage is over (and began longer ago than the report delay)
+    await server.stop()
+    await asyncio.sleep(0.05)
+    assert output.error_log == []  # not yet: this outage only began
+    await controller.stop()

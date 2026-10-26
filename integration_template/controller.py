@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 from majordom_integration_sdk import (
+    STABLE_RUN,
     AbstractController,
     Device,
     DeviceCommand,
@@ -75,6 +76,9 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
     _RECONNECT_DELAY = 1.0  # seconds, doubled after every failed attempt
     _RECONNECT_DELAY_MAX = 30.0
     _UNREACHABLE_AFTER = 15.0  # seconds away before the user is told
+    # Seconds a connection must hold to end an outage (the runtime's stable run): drops in a row add up, so a server
+    # that answers and drops every time is reported too
+    _STABLE_CONNECTION = STABLE_RUN
     _ANSWER_TIMEOUT = 10.0  # seconds a server may take to answer a new connection
 
     def __init__(self, platform: Platform, *, settings: Settings | None = None):
@@ -159,12 +163,17 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
     async def _stay_connected(self, reader: asyncio.StreamReader):
         """Reconnects whenever the server goes away (e.g. it was restarted) until stop() cancels it,
         so the integration heals by itself instead of being restarted by the Hub."""
+        loop = asyncio.get_running_loop()
+        lost_at: float | None = None  # when the outage began
         try:
             while True:
+                connected_at = loop.time()
                 await self._listen(reader)
                 self._disconnect()
                 # The devices behind it are out of reach now: e.g. controller_did_lose_device for each
-                reader = await self._reconnect()
+                if lost_at is None or loop.time() - connected_at >= self._STABLE_CONNECTION:
+                    lost_at = loop.time()  # a new outage, else the last one goes on
+                reader = await self._reconnect(lost_at)
                 # Back: e.g. controller_did_connect_device for each that answers again
         except Exception:  # a bug rather than an outage: the Hub restarts the integration, then gives up on it
             logger.exception(f"[{self.name}] stopped listening to the server")
@@ -172,26 +181,27 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
             crashed = IntegrationError("crashed", message, is_still_running=False)
             await self.output.controller_did_encounter_error(self, crashed)
 
-    async def _reconnect(self) -> asyncio.StreamReader:
+    async def _reconnect(self, lost_at: float) -> asyncio.StreamReader:
         """Tries again, less and less often, until the server is back. Tells the user only once it was away for a
         while: a server restarting on purpose (e.g. recreated with new settings) is usually back well before."""
         loop = asyncio.get_running_loop()
-        lost_at, delay, is_reported = loop.time(), self._RECONNECT_DELAY, False
+        delay, is_reported = self._RECONNECT_DELAY, False
         while True:
+            # Also before the first try: a drop soon after another one is reported at once
+            if not is_reported and loop.time() - lost_at >= self._UNREACHABLE_AFTER:
+                message = "Lost the connection to the Example server, reconnecting."
+                lost = IntegrationError("server-unreachable", message)
+                await self.output.controller_did_encounter_error(self, lost)
+                is_reported = True
             await asyncio.sleep(delay)
             try:
                 reader = await self._connect()
             except OSError as error:
                 self._disconnect()  # a connection it hung up
                 logger.info(f"[{self.name}] the server is not back yet: {error!r}")
-                if not is_reported and loop.time() - lost_at >= self._UNREACHABLE_AFTER:
-                    message = "Lost the connection to the Example server, reconnecting."
-                    lost = IntegrationError("server-unreachable", message)
-                    await self.output.controller_did_encounter_error(self, lost)
-                    is_reported = True
                 delay = min(delay * 2, self._RECONNECT_DELAY_MAX)
             else:
-                if is_reported:
+                if is_reported:  # the devices work again, though the outage lasts until the connection holds
                     await self.output.controller_did_resolve_error(self, "server-unreachable")
                 return reader
 
