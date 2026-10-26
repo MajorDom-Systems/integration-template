@@ -112,6 +112,7 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
             await asyncio.wait([self._keeper])  # unlike awaiting it, never raises (the keeper reports a crash itself)
             self._keeper = None
         self._disconnect()
+        self._discoveries.clear()  # heard anew after the next start, which reports them again
 
     # Hooks: return True when applied in place, False to have the Hub restart the integration. The
     # defaults: settings_did_change and needed_peripheral_did_change (a need moved, or an optional one

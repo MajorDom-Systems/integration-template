@@ -4,7 +4,7 @@ Kept separate from ``test_controller.py`` so the template repo's own CI (which e
 prefilled, expected-to-fail controller suite) still has tests to run and stays green.
 """
 
-from majordom_integration_sdk import Service
+from majordom_integration_sdk import Discovery, Service
 from majordom_integration_sdk.testing import build_test_platform
 
 from integration_template import ExampleController, peripherals
@@ -13,6 +13,13 @@ from integration_template import ExampleController, peripherals
 async def test_starts_and_stops(controller: ExampleController):
     await controller.start()
     await controller.stop()
+
+
+async def test_forgets_its_discoveries_when_it_stops(controller: ExampleController, discovery: Discovery):
+    await controller.start()
+    controller._discoveries[discovery.id] = discovery  # as your discovery listener caches it
+    await controller.stop()
+    assert controller.discoveries == {}  # the device may be gone or paired elsewhere by the next start
 
 
 async def test_name_and_key(controller: ExampleController):
