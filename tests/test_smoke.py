@@ -15,9 +15,8 @@ async def test_starts_and_stops(controller: ExampleController):
     await controller.stop()
 
 
-async def test_name_and_slug(controller: ExampleController):
+async def test_name_and_key(controller: ExampleController):
     assert controller.name == "Example"
-    assert controller.name_slug == "example"
     assert controller.key == "example"  # what its devices, settings and folder are kept by
 
 

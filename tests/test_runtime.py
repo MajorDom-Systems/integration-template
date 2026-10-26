@@ -12,6 +12,7 @@ from majordom_integration_sdk.testing import (
     FakePeripheral,
     RecordingControllerOutput,
     RecordingRuntimeOutput,
+    build_test_platform,
 )
 
 from integration_template import ExampleController
@@ -56,12 +57,13 @@ async def test_is_restarted_for_a_new_region_only(runtime: Runtime, server: Virt
 
 
 async def test_recreates_the_server_with_new_settings(tmp_path: Path):
-    server, controller = example_server(), FakePeripheral("controller", [Need("example", ["echo"])])
-    runtime = Runtime(tmp_path, [FakeCompose(), server, controller])
-    compose = tmp_path / "peripherals" / "compose" / "compose.json"
+    compose, server = FakeCompose(), example_server()
+    controller = FakePeripheral("controller", [Need("example", ["echo"])])
+    runtime = Runtime(tmp_path, [compose, server, controller], platform=build_test_platform(tmp_path / "documents"))
 
     def greeting() -> str:
-        return json.loads(compose.read_text())["services"]["example-server"]["command"][-1]
+        rendered = json.loads((compose.platform.documents_folder(compose) / "compose.json").read_text())
+        return rendered["services"]["example-server"]["command"][-1]
 
     await runtime.start()
     await until(lambda: runtime.status(server).state == PeripheralState.RUNNING)
