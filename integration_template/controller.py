@@ -104,7 +104,8 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
         return True
 
     async def platform_facts_did_change(self, before: Platform) -> bool:
-        return False  # the server gets the region when the controller connects: let the Hub restart it
+        # The server gets the region when the controller connects: let the Hub restart it for a new one
+        return self.platform.region == before.region
 
     # Server ------------------------------------------------------------------
 

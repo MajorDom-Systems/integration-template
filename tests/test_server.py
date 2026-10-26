@@ -62,7 +62,9 @@ async def test_takes_a_new_server_name_while_the_server_is_away(
     await controller.stop()
 
 
-async def test_asks_for_a_restart_when_the_platform_facts_change(controller: ExampleController):
+async def test_asks_for_a_restart_only_for_a_new_region(controller: ExampleController):
+    before, controller.platform = controller.platform, replace(controller.platform, thread_dataset="0e08000000")
+    assert await controller.platform_facts_did_change(before)  # not its concern: it goes on
     before, controller.platform = controller.platform, replace(controller.platform, region="Europe")
     assert not await controller.platform_facts_did_change(before)
 
