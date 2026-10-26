@@ -11,7 +11,7 @@ class VirtualServer:
         self.port = 0
         self.lines: list[str] = []
         self._server: asyncio.Server | None = None
-        self._clients: list[asyncio.StreamWriter] = []
+        self._clients: set[asyncio.StreamWriter] = set()  # the connected ones
 
     async def start(self):
         self._server = await asyncio.start_server(self._serve, "127.0.0.1", self.port)
@@ -26,8 +26,12 @@ class VirtualServer:
             await self._server.wait_closed()
             self._server = None
 
+    @property
+    def is_connected(self) -> bool:
+        return bool(self._clients)
+
     async def send(self, line: bytes):
-        for client in self._clients:
+        for client in [*self._clients]:  # one may go while another drains
             client.write(line + b"\n")
             await client.drain()
 
@@ -37,7 +41,11 @@ class VirtualServer:
                 await asyncio.sleep(0.01)
 
     async def _serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        self._clients.append(writer)
-        with contextlib.suppress(ConnectionError):
-            while line := await reader.readline():
-                self.lines.append(line.decode().strip())
+        self._clients.add(writer)
+        try:
+            with contextlib.suppress(ConnectionError):
+                while line := await reader.readline():
+                    self.lines.append(line.decode().strip())
+        finally:  # the client went: stop writing to it
+            self._clients.discard(writer)
+            writer.close()

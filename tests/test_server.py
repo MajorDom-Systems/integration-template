@@ -22,6 +22,14 @@ async def test_connects_through_its_link_and_configures_the_server(
     await controller.stop()
 
 
+async def test_closes_its_connection_when_it_stops(controller: ExampleController, server: VirtualServer):
+    await controller.start()
+    await server.received("name MajorDom")
+    assert server.is_connected
+    await controller.stop()
+    await until(lambda: not server.is_connected)
+
+
 async def test_cant_start_without_the_server_and_starts_again_once_it_is_back(
     controller: ExampleController, server: VirtualServer
 ):
