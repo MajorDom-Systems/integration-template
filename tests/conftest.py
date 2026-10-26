@@ -3,9 +3,10 @@
 conftest.py is auto-discovered by pytest — no import needed.
 
 The fixtures wire the integration's Controller with the SDK's test doubles (a recording
-`ControllerOutput`, an in-memory device repository, and fakes of every capability) and build
-sample `Discovery`/`DeviceState` objects, so tests can drive the controller exactly as the
-Hub would — without a running Hub.
+`ControllerOutput`, an in-memory device repository) and a virtual server in place of the one
+the integration brings, run it under the SDK's runtime, and build sample
+`Discovery`/`DeviceState` objects, so tests can drive the controller exactly as the Hub
+would — without a running Hub.
 
 **Device persistence is the Hub's core business logic, not the integration's.** The Hub
 creates and stores device rows (name/room mapping, id assignment, the provisional→final id
@@ -91,7 +92,8 @@ async def runtime(
 # hardware, no network) so tests are deterministic and can assert what actually reached the
 # device. Stand one up here and have the controller talk to it (e.g. via a base URL / mock
 # transport injected through the controller). Tests then assert on both the controller's
-# reports (output) and this object's observed state.
+# reports (output) and this object's observed state. `VirtualServer` (tests/virtual_server.py)
+# is the worked example: it stands in for the server and records what reached it.
 #
 # @pytest.fixture
 # def virtual_device():
