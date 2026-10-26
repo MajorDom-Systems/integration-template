@@ -74,6 +74,7 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
 
     _RECONNECT_DELAY = 1.0  # seconds, doubled after every failed attempt
     _RECONNECT_DELAY_MAX = 30.0
+    _UNREACHABLE_AFTER = 15.0  # seconds away before the user is told
 
     def __init__(self, platform: Platform, *, settings: Settings | None = None):
         super().__init__(platform, settings=settings)
@@ -163,16 +164,17 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
             await self.output.controller_did_encounter_error(self, crashed)
 
     async def _reconnect(self) -> asyncio.StreamReader:
-        """Tries again, less and less often, until the server is back. Tells the user only once an attempt failed: a
-        server restarting on purpose (e.g. recreated with new settings) is usually back by the first one."""
-        delay, is_reported = self._RECONNECT_DELAY, False
+        """Tries again, less and less often, until the server is back. Tells the user only once it was away for a
+        while: a server restarting on purpose (e.g. recreated with new settings) is usually back well before."""
+        loop = asyncio.get_running_loop()
+        lost_at, delay, is_reported = loop.time(), self._RECONNECT_DELAY, False
         while True:
             await asyncio.sleep(delay)
             try:
                 reader = await self._connect()
             except OSError as error:
                 logger.info(f"[{self.name}] the server is not back yet: {error!r}")
-                if not is_reported:
+                if not is_reported and loop.time() - lost_at >= self._UNREACHABLE_AFTER:
                     message = "Lost the connection to the Example server, reconnecting."
                     lost = IntegrationError("server-unreachable", message)
                     await self.output.controller_did_encounter_error(self, lost)

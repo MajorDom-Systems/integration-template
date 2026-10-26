@@ -64,6 +64,7 @@ async def test_takes_a_new_server_name_while_the_server_is_away(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.01)
+    monkeypatch.setattr(ExampleController, "_UNREACHABLE_AFTER", 0.05)
     await controller.start()
     await server.received("name MajorDom")
     await server.stop()  # e.g. its container restarts
@@ -102,11 +103,12 @@ async def test_reconnects_when_the_server_comes_back(
 ):
     monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.01)
     monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY_MAX", 0.04)
+    monkeypatch.setattr(ExampleController, "_UNREACHABLE_AFTER", 0.05)
     await controller.start()
     await server.received("name MajorDom")
 
     await server.stop()
-    await asyncio.sleep(0.1)  # a few attempts fail while it's down
+    await until(lambda: "server-unreachable" in output.errors)  # a few attempts failed while it's down
     server.lines.clear()
     await server.start()
 
@@ -117,20 +119,21 @@ async def test_reconnects_when_the_server_comes_back(
     await controller.stop()
 
 
-async def test_rides_out_a_quick_server_restart_without_telling_the_user(
+async def test_rides_out_a_server_restart_without_telling_the_user(
     controller: ExampleController,
     output: RecordingControllerOutput,
     server: VirtualServer,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.2)
+    monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.01)
     await controller.start()
     await server.received("name MajorDom")
 
-    await server.stop()  # e.g. recreated with new settings, back before the first attempt
+    await server.stop()  # e.g. recreated with new settings: back after a few seconds
+    await asyncio.sleep(0.1)  # a few attempts fail meanwhile
     server.lines.clear()
     await server.start()
 
     await server.received("name MajorDom")
-    assert output.error_log == []
+    assert output.error_log == []  # told only once it was away for about 15 s
     await controller.stop()
