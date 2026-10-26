@@ -47,6 +47,8 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
         self._keeper: asyncio.Task[None] | None = None
         # e.g. self._cancel_zeroconf: Callable[[], None] | None = None
 
+    # Shown to the user, and its identity: its slug is the key the integration's devices, settings and folder are
+    # kept by. Never rename it once released.
     name = "Example"
 
     # What the controller connects to beyond the network, and what the user can set. The Hub runs
