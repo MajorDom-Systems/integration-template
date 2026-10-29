@@ -1,0 +1,213 @@
+"""The server the integration brings: connecting through its link, the settings and platform facts hooks,
+and healing when the server goes away."""
+
+import asyncio
+from dataclasses import replace
+
+import pytest
+from majordom_integration_sdk import IntegrationError
+from majordom_integration_sdk.testing import RecordingControllerOutput
+from pydantic import ValidationError
+
+from integration_template import ExampleController
+from tests.support import until
+from tests.virtual_server import VirtualServer
+
+
+async def test_connects_through_its_link_and_configures_the_server(
+    controller: ExampleController, server: VirtualServer
+):
+    await controller.start()
+    await server.received("name MajorDom")
+    await controller.stop()
+
+
+async def test_closes_its_connection_when_it_stops(controller: ExampleController, server: VirtualServer):
+    await controller.start()
+    await server.received("name MajorDom")
+    assert server.is_connected
+    await controller.stop()
+    await until(lambda: not server.is_connected)
+
+
+async def test_cant_start_without_the_server_and_starts_again_once_it_is_back(
+    controller: ExampleController, server: VirtualServer
+):
+    await server.stop()
+    with pytest.raises(OSError):
+        await controller.start()  # the runtime tries again later, then gives up
+    await controller.stop()  # the runtime stops it after a failed start, then starts the same object again
+
+    await server.start()
+    await controller.start()
+    await server.received("name MajorDom")
+    await controller.stop()
+
+
+async def test_applies_a_new_server_name_in_place(controller: ExampleController, server: VirtualServer):
+    await controller.start()
+    before, controller.settings = controller.settings, ExampleController.Settings(server_name="Attic")
+    assert await controller.settings_did_change(before)
+    await server.received("name Attic")
+    await controller.stop()
+
+
+def test_refuses_a_server_name_that_would_break_the_protocol():
+    with pytest.raises(ValidationError):
+        ExampleController.Settings(server_name="Attic\nregion Mars")  # a second command
+
+
+async def test_takes_a_new_server_name_while_the_server_is_away(
+    controller: ExampleController,
+    output: RecordingControllerOutput,
+    server: VirtualServer,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.01)
+    monkeypatch.setattr(ExampleController, "_UNREACHABLE_AFTER", 0.05)
+    await controller.start()
+    await server.received("name MajorDom")
+    await server.stop()  # e.g. its container restarts
+    await until(lambda: "server-unreachable" in output.errors)
+
+    before, controller.settings = controller.settings, ExampleController.Settings(server_name="Attic")
+    assert await controller.settings_did_change(before)  # no restart: it hands the name over once reconnected
+    await server.start()
+    await server.received("name Attic")
+    await controller.stop()
+
+
+async def test_tells_the_hub_it_cant_go_on_when_its_listener_breaks(
+    controller: ExampleController, output: RecordingControllerOutput, server: VirtualServer
+):
+    await controller.start()
+    await server.received("name MajorDom")
+    await server.send(b"x" * 70_000)  # over StreamReader's line limit: readline raises, as a bug in your parsing would
+    await until(lambda: "crashed" in output.errors)
+    assert not output.errors["crashed"].is_still_running  # the Hub restarts it
+    await controller.stop()
+
+
+async def test_asks_for_a_restart_only_for_a_new_region(controller: ExampleController):
+    before, controller.platform = controller.platform, replace(controller.platform, thread_dataset="0e08000000")
+    assert await controller.platform_facts_did_change(before)  # not its concern: it goes on
+    before, controller.platform = controller.platform, replace(controller.platform, region="Europe")
+    assert not await controller.platform_facts_did_change(before)
+
+
+async def test_reconnects_when_the_server_comes_back(
+    controller: ExampleController,
+    output: RecordingControllerOutput,
+    server: VirtualServer,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.01)
+    monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY_MAX", 0.04)
+    monkeypatch.setattr(ExampleController, "_UNREACHABLE_AFTER", 0.05)
+    await controller.start()
+    await server.received("name MajorDom")
+
+    await server.stop()
+    await until(lambda: "server-unreachable" in output.errors)  # a few attempts failed while it's down
+    server.lines.clear()
+    await server.start()
+
+    await server.received("name MajorDom")
+    await until(lambda: not output.errors)  # resolved once connected again
+    lost = IntegrationError("server-unreachable", "Lost the connection to the Example server, reconnecting.")
+    assert output.error_log == [lost, "server-unreachable"]
+    await controller.stop()
+
+
+async def test_counts_a_server_that_hangs_up_before_it_answers_as_away(
+    controller: ExampleController,
+    output: RecordingControllerOutput,
+    server: VirtualServer,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.01)
+    monkeypatch.setattr(ExampleController, "_UNREACHABLE_AFTER", 0.2)
+    await controller.start()
+    await server.received("name MajorDom")
+
+    await server.stop()
+    server.is_hanging_up, server.connections = True, 0  # e.g. it refuses the client now, or a proxy's backend is down
+    await server.start()
+
+    await until(lambda: "server-unreachable" in output.errors)
+    assert server.connections <= 6  # less and less often (after 0.01, 0.03, 0.07, 0.15, 0.31 s), not every 10 ms
+    await controller.stop()
+
+
+async def test_rides_out_a_server_restart_without_telling_the_user(
+    controller: ExampleController,
+    output: RecordingControllerOutput,
+    server: VirtualServer,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.01)
+    await controller.start()
+    await server.received("name MajorDom")
+
+    await server.stop()  # e.g. recreated with new settings: back after a few seconds
+    await asyncio.sleep(0.1)  # a few attempts fail meanwhile
+    server.lines.clear()
+    await server.start()
+
+    await server.received("name MajorDom")
+    assert output.error_log == []  # told only once it was away for about 15 s
+    await controller.stop()
+
+
+async def test_reports_a_server_that_drops_every_time_it_answers(
+    controller: ExampleController,
+    output: RecordingControllerOutput,
+    server: VirtualServer,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.01)
+    monkeypatch.setattr(ExampleController, "_UNREACHABLE_AFTER", 0.1)
+    server.is_dropping = True  # every reconnect works, none holds
+    await controller.start()
+
+    await until(lambda: "server-unreachable" in output.error_log)  # the drops added up to an outage
+    lost = IntegrationError("server-unreachable", "Lost the connection to the Example server, reconnecting.")
+    assert output.error_log[:2] == [lost, "server-unreachable"]  # cleared at the reconnect: the devices work again
+    await controller.stop()
+
+
+async def test_tries_a_server_that_drops_every_time_it_answers_less_and_less_often(
+    controller: ExampleController,
+    server: VirtualServer,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.01)
+    server.is_dropping = True  # every reconnect works, none holds
+    await controller.start()
+
+    await asyncio.sleep(0.3)
+    assert server.connections <= 6  # one outage: back after 0.01, 0.03, 0.07, 0.15 s, not every 10 ms
+    await controller.stop()
+
+
+async def test_a_server_lost_long_after_it_came_back_is_a_new_outage(
+    controller: ExampleController,
+    output: RecordingControllerOutput,
+    server: VirtualServer,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(ExampleController, "_RECONNECT_DELAY", 0.01)
+    monkeypatch.setattr(ExampleController, "_UNREACHABLE_AFTER", 0.2)
+    monkeypatch.setattr(ExampleController, "_STABLE_CONNECTION", 0.1)
+    await controller.start()
+    await server.received("name MajorDom")
+    await server.stop()
+    server.lines.clear()
+    await server.start()
+    await server.received("name MajorDom")
+
+    await asyncio.sleep(0.25)  # held: that outage is over (and began longer ago than the report delay)
+    await server.stop()
+    await asyncio.sleep(0.05)
+    assert output.error_log == []  # not yet: this outage only began
+    await controller.stop()

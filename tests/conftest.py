@@ -3,9 +3,10 @@
 conftest.py is auto-discovered by pytest — no import needed.
 
 The fixtures wire the integration's Controller with the SDK's test doubles (a recording
-`ControllerOutput`, an in-memory device repository, and fake discovery services) and build
-sample `Discovery`/`DeviceState` objects, so tests can drive the controller exactly as the
-Hub would — without a running Hub.
+`ControllerOutput`, an in-memory device repository) and a virtual server in place of the one
+the integration brings, run it under the SDK's runtime, and build sample
+`Discovery`/`DeviceState` objects, so tests can drive the controller exactly as the Hub
+would — without a running Hub.
 
 **Device persistence is the Hub's core business logic, not the integration's.** The Hub
 creates and stores device rows (name/room mapping, id assignment, the provisional→final id
@@ -15,40 +16,100 @@ would, so the controller sees realistic state — the tests never make the integ
 persist a device itself.
 """
 
+from collections.abc import AsyncIterator
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from majordom_integration_sdk.controller import AbstractController
-from majordom_integration_sdk.schemas.device import CredentialsType, Device, DeviceState, Discovery
+from majordom_integration_sdk import Device, Discovery, Endpoint, Peripherals, Platform
+from majordom_integration_sdk.runtime import PeripheralState, Pinned, Runtime
+from majordom_integration_sdk.schemas.device import CredentialsType, DeviceState
 from majordom_integration_sdk.schemas.parameter import (
     ParameterDataType,
     ParameterRole,
     ParameterState,
     ParameterVisibility,
 )
-from majordom_integration_sdk.testing import build_test_dependencies
+from majordom_integration_sdk.testing import RecordingControllerOutput, RecordingRuntimeOutput, build_test_platform
 
 from integration_template import ExampleController
+from tests.support import until
+from tests.virtual_server import VirtualServer
 
-INTEGRATION = "example"
-
-
-@pytest.fixture
-def deps() -> AbstractController.Dependencies:
-    """SDK-provided test dependencies (recording output + in-memory repo + fake discovery)."""
-    return build_test_dependencies(integration=INTEGRATION)
+INTEGRATION = ExampleController.slug()  # its key, which the Hub scopes its devices by
 
 
 @pytest.fixture
-def controller(deps: AbstractController.Dependencies) -> ExampleController:
-    return ExampleController(deps)
+async def server() -> AsyncIterator[VirtualServer]:
+    server = VirtualServer()
+    await server.start()
+    yield server
+    await server.stop()
+
+
+@pytest.fixture
+def platform(tmp_path: Path) -> Platform:
+    """The SDK's test platform (in-memory device repository, the host's facts), as the Hub gives it to every
+    integration."""
+    return build_test_platform(tmp_path / "documents")  # the folders go with the test
+
+
+@pytest.fixture
+def output() -> RecordingControllerOutput:
+    """Records what the controller reports, where the Hub would hear it."""
+    return RecordingControllerOutput()
+
+
+@pytest.fixture
+def bound(server: VirtualServer) -> Peripherals:
+    """The controller's need bound to the virtual server, as the Hub binds it to `example_server()`."""
+    return Peripherals({"example": Endpoint("example", "echo", f"tcp://127.0.0.1:{server.port}")})
+
+
+@pytest.fixture
+def controller(platform: Platform, bound: Peripherals, output: RecordingControllerOutput) -> ExampleController:
+    controller = ExampleController(platform)
+    controller.peripherals = bound  # bound by hand, as in library mode
+    controller.output = output
+    return controller
+
+
+@pytest.fixture
+def statuses() -> RecordingRuntimeOutput:
+    """Records the statuses the runtime gives the controller, where the Hub would show them."""
+    return RecordingRuntimeOutput()
+
+
+@pytest.fixture
+async def runtime(
+    tmp_path: Path,
+    controller: ExampleController,
+    bound: Peripherals,
+    output: RecordingControllerOutput,
+    statuses: RecordingRuntimeOutput,
+) -> AsyncIterator[Runtime]:
+    """The controller run as the Hub runs it, once it runs: its need pinned to the virtual server (the Hub runs
+    `example_server()` instead), what it reports going to `output`, its statuses to `statuses`."""
+    runtime = Runtime(
+        tmp_path,
+        [Pinned(bound.endpoint("example")), controller],
+        platform=controller.platform,
+        controller_output=output,
+        output=statuses,
+        retry_delays=(0.01, 0.01, 0.01),  # the Hub waits 5, 30, 120 s
+    )
+    await runtime.start()
+    await until(lambda: runtime.status(controller).state == PeripheralState.RUNNING)
+    yield runtime
+    await runtime.stop()
 
 
 # A virtual / simulated device — a fake endpoint that speaks your protocol in-process (no
 # hardware, no network) so tests are deterministic and can assert what actually reached the
 # device. Stand one up here and have the controller talk to it (e.g. via a base URL / mock
 # transport injected through the controller). Tests then assert on both the controller's
-# reports (deps.output) and this object's observed state.
+# reports (output) and this object's observed state. `VirtualServer` (tests/virtual_server.py)
+# is the worked example: it stands in for the server and records what reached it.
 #
 # @pytest.fixture
 # def virtual_device():
@@ -58,9 +119,9 @@ def controller(deps: AbstractController.Dependencies) -> ExampleController:
 #     dev.stop()
 
 
-async def _seed(deps: AbstractController.Dependencies, device: DeviceState) -> None:
+async def _seed(controller: ExampleController, device: DeviceState):
     """Persist a device the way the Hub would, before handing control to the integration."""
-    async with deps.make_device_repository() as repo:
+    async with controller.platform.device_repository(controller) as repo:
         await repo.save(device)
 
 
@@ -80,7 +141,7 @@ def discovery() -> Discovery:
 
 
 @pytest.fixture
-async def provisional_device(deps: AbstractController.Dependencies, discovery: Discovery) -> DeviceState:
+async def provisional_device(controller: ExampleController, discovery: Discovery) -> DeviceState:
     """The device as it exists when the Hub calls `pair_device`.
 
     Before pairing, the Hub has already created the row from the user's input: name and room
@@ -97,12 +158,12 @@ async def provisional_device(deps: AbstractController.Dependencies, discovery: D
         manufacturer=discovery.device_manufacturer,
         parameters=[],
     )
-    await _seed(deps, device)
+    await _seed(controller, device)
     return device
 
 
 @pytest.fixture
-async def device_state(deps: AbstractController.Dependencies) -> DeviceState:
+async def device_state(controller: ExampleController) -> DeviceState:
     """An already-paired device with one on/off parameter, as the Hub *stores* it (the full
     state, with parameters). Seeded into the repository."""
     power = ParameterState(
@@ -123,7 +184,7 @@ async def device_state(deps: AbstractController.Dependencies) -> DeviceState:
         manufacturer="ACME",
         parameters=[power],
     )
-    await _seed(deps, state)
+    await _seed(controller, state)
     return state
 
 

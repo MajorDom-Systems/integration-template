@@ -17,9 +17,9 @@ jobs:
   test:
     if: github.repository != 'MajorDom-Systems/integration-template'
     uses: ParkerIndustries/workflows/.github/workflows/test.yml@v1
-    # Defaults to the team matrix ["3.12", "3.13"]. Uncomment to customize:
-    # with:
-    #   python-versions: '["3.12", "3.13", "3.14"]'
+    # The team matrix is ["3.12", "3.13"]; the SDK needs 3.13 (type parameter defaults).
+    with:
+      python-versions: '["3.13"]'
     #   # Runs after `poetry install`, before checks (system deps, Cython build_ext, ...):
     #   setup-script: |
     #     sudo apt-get update && sudo apt-get install -y espeak-ng
@@ -43,8 +43,8 @@ jobs:
         run: pipx install poetry
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
-          # No `cache: poetry` — the template gitignores poetry.lock, so there's nothing to key on.
+          python-version: "3.13"
+          cache: poetry  # keyed on the tracked poetry.lock
       - name: Install dependencies
         run: poetry install
       - name: Lint & type-check (full tree, including the skeleton tests)

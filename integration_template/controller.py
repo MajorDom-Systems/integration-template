@@ -1,41 +1,94 @@
 """A minimal MajorDom integration controller.
 
-This is a worked skeleton — replace the TODO bodies with real protocol calls. It shows the
-full lifecycle the Hub drives: discovery -> pairing -> commands -> teardown.
+This is a worked skeleton — replace the bodies raising NotImplementedError with real protocol calls.
+It shows the full lifecycle the Hub drives: discovery -> pairing -> commands -> teardown.
 
 See the full guide at https://docs.majordom.io/device-integration.
 
-A Controller bridges one external protocol/platform into the MajorDom language. The Hub
-instantiates it with injected `Dependencies` and calls the methods below; the controller
-reports back to the Hub through `dependencies.output` (a `ControllerOutput`).
+A Controller bridges one external protocol/platform into the MajorDom language. The package exports
+it from `peripherals(platform)` next to the server it needs (see `__init__.py`). The Hub gives it the
+host (`self.platform`: its facts, the device repository and a documents folder), its settings
+(`self.settings`) and its bound needs (`self.peripherals`) and calls the methods below; the controller
+reports back to the Hub through `self.output` (a `ControllerOutput`).
 """
 
-from __future__ import annotations
-
+import asyncio
+import contextlib
+import logging
+from urllib.parse import urlsplit
 from uuid import UUID
 
-from majordom_integration_sdk.controller import AbstractController
-from majordom_integration_sdk.schemas.command import DeviceCommand
-from majordom_integration_sdk.schemas.device import Device, Discovery, Parameter, ProvidedCredentials
+from majordom_integration_sdk import (
+    STABLE_RUN,
+    AbstractController,
+    Device,
+    DeviceCommand,
+    Discovery,
+    IntegrationError,
+    Need,
+    Parameter,
+    Platform,
+    ProvidedCredentials,
+)
+from pydantic import BaseModel, Field
 
-# Output methods to call (see the docs):
+logger = logging.getLogger(__name__)
+
+# What to report through `self.output` (see the docs):
 # async def controller_did_receive_discovery(self, controller: AbstractController, discovery: Discovery): ...
 # async def controller_did_update_discovery(self, controller: AbstractController, discovery: Discovery): ...
 # async def controller_did_lose_discovery(self, controller: AbstractController, discovery_id: UUID): ...
 # async def controller_did_connect_device(self, controller: AbstractController, device_id: UUID): ...
 # async def controller_did_lose_device(self, controller: AbstractController, device_id: UUID): ...
 # async def controller_did_receive_events(self, controller: AbstractController, events: Iterable[Event]): ...
+# async def controller_did_encounter_error(self, controller: AbstractController, error: IntegrationError): ...
+# async def controller_did_resolve_error(self, controller: AbstractController, error_id: str): ...
+# async def controller_did_emit_notification(self, controller: AbstractController, notification: Notification): ...
+# async def controller_did_change_provided(self, controller: AbstractController): ...  # what `provides` returns changed
 
 
-class ExampleController(AbstractController[Device, Parameter]):
+class ExampleController(AbstractController[Device, Parameter, "ExampleController.Settings"]):
     """Bridges the Example protocol into MajorDom."""
 
-    def __init__(self, dependencies: AbstractController.Dependencies):
-        super().__init__(dependencies)
-        self._discoveries: dict[UUID, Discovery] = {}
-        # e.g. self._cancel_zeroconf: Callable[[], None] | None = None
-
+    # Shown to the user, and its identity: its slug is the key the integration's devices, settings and folder are
+    # kept by. Never rename it once released.
     name = "Example"
+
+    # What the controller connects to beyond the network, and what the user can set. The Hub runs
+    # `example_server()`, which the package provides next to it, binds the need to it and hands over
+    # its URL in `self.peripherals.endpoint("example")`; settings arrive validated in `self.settings`.
+    # Declare everything external as a Need: radios, the SDK's typed BLE_ROUTER (never raw Bluetooth), ZEROCONF,
+    # UPNP_SSDP (majordom_integration_sdk.capabilities) and the services you bring.
+    # Leave them out if the protocol only uses the network.
+    # See https://docs.majordom.io/device-integration/radios and .../settings.
+    needs = [Need("example", ["echo"])]
+
+    class Settings(BaseModel):
+        # Give every field a default: the Hub builds the controller with them before the user can enter any
+        server_name: str = Field(
+            "MajorDom",
+            pattern=r"^[^\r\n]+$",  # one line: it goes into the line protocol
+            max_length=64,
+            title="Server name",
+            description="How the server introduces itself.",
+        )
+
+    _RECONNECT_DELAY = 1.0  # seconds, doubled after every attempt until a connection holds
+    _RECONNECT_DELAY_MAX = 30.0
+    _UNREACHABLE_AFTER = 15.0  # seconds away before the user is told
+    # Seconds a connection must hold to end an outage (the runtime's stable run): drops in a row add up, so a server
+    # that answers and drops every time is reported too
+    _STABLE_CONNECTION = STABLE_RUN
+    _ANSWER_TIMEOUT = 10.0  # seconds a server may take to answer a new connection
+
+    def __init__(self, platform: Platform, *, settings: Settings | None = None):
+        super().__init__(platform, settings=settings)
+        self._discoveries: dict[UUID, Discovery] = {}
+        self._reconnect_delay = self._RECONNECT_DELAY  # kept across the drops of an outage: it grows through them
+        # What start() sets up: stop() leaves them as here, also after a start that failed half-way
+        self._writer: asyncio.StreamWriter | None = None  # to the server, while connected
+        self._keeper: asyncio.Task[None] | None = None
+        # e.g. self._cancel_zeroconf: Callable[[], None] | None = None
 
     @property
     def discoveries(self) -> dict[UUID, Discovery]:
@@ -44,38 +97,147 @@ class ExampleController(AbstractController[Device, Parameter]):
 
     # Lifecycle -------------------------------------------------------------
 
-    async def start(self) -> None:
-        # Register discovery services, subscribe to protocol events, and reconcile the
+    async def start(self):
+        # Register with discovery (needed as peripherals), subscribe to protocol events, and reconcile the
         # state of already-paired devices here.
-        # e.g. self._cancel_zeroconf = self.dependencies.zeroconf_discovery_service.register(
-        #     self, {"_example._tcp.local."}
-        # )
-        ...
+        # e.g. async with self.platform.device_repository(self) as repository: paired = await repository.get_all()
+        # Then report every paired device that answers: the Hub marked them all unavailable when the integration
+        # stopped. e.g. await self.output.controller_did_connect_device(self, device.id)
+        # e.g. with ZEROCONF in `needs`:
+        # self._cancel_zeroconf = self.peripherals.instance(ZEROCONF).register(self, {"_example._tcp.local."})
+        reader = await self._connect()  # raising here has the Hub retry start()
+        self._keeper = asyncio.create_task(self._stay_connected(reader))
 
-    async def stop(self) -> None:
-        # Cancel tasks and release every held resource.
-        # e.g. if self._cancel_zeroconf: self._cancel_zeroconf()
-        ...
+    async def stop(self):
+        # Cancel tasks and release every held resource, also after a start that failed half-way: the Hub stops it then
+        # too, and starts the same object again later. Nothing in flight may take resources after it: a pairing that
+        # finishes later is refused and undone (see pair_device).
+        # e.g. if self._cancel_zeroconf:
+        #     self._cancel_zeroconf()
+        #     self._cancel_zeroconf = None
+        if self._keeper:
+            self._keeper.cancel()
+            await asyncio.wait([self._keeper])  # unlike awaiting it, never raises (the keeper reports a crash itself)
+            self._keeper = None
+        self._disconnect()
+        self._discoveries.clear()  # heard anew after the next start, which reports them again
+
+    # Hooks: return True when applied in place, False to have the Hub restart the integration. The
+    # defaults: settings_did_change and needed_peripheral_did_change (a need moved, or an optional one
+    # appeared) restart it; platform_facts_did_change doesn't.
+
+    async def settings_did_change(self, before: Settings) -> bool:
+        if self.settings.server_name != before.server_name and self._writer:
+            with contextlib.suppress(OSError):  # the server is away: the keeper hands it the name on reconnect
+                await self._sync_with_server(self._writer)
+        return True
+
+    async def platform_facts_did_change(self, before: Platform) -> bool:
+        # The server gets the region when the controller connects: let the Hub restart it for a new one
+        return self.platform.region == before.region
+
+    # Server ------------------------------------------------------------------
+
+    async def _connect(self) -> asyncio.StreamReader:
+        url = urlsplit(self.peripherals.endpoint("example").url)  # never build it yourself: the port may differ
+        reader, self._writer = await asyncio.open_connection(url.hostname, url.port)
+        await self._sync_with_server(self._writer)
+        # Connected once it answers (here the echo of its name; yours may greet first). One that hangs up before (it
+        # refused the client, a proxy without its backend) or keeps silent isn't back: a failed attempt.
+        async with asyncio.timeout(self._ANSWER_TIMEOUT):  # TimeoutError is an OSError
+            if not await reader.readline():
+                raise ConnectionResetError("the server hung up before it answered")
+        return reader
+
+    def _disconnect(self):
+        if self._writer:
+            self._writer.close()
+            self._writer = None
+
+    async def _sync_with_server(self, writer: asyncio.StreamWriter):
+        """Hands the server its configuration; on every (re)connect."""
+        writer.write(f"name {self.settings.server_name}\n".encode())
+        if region := self.platform.region:
+            writer.write(f"region {region}\n".encode())
+        await writer.drain()
+
+    async def _stay_connected(self, reader: asyncio.StreamReader):
+        """Reconnects whenever the server goes away (e.g. it was restarted) until stop() cancels it,
+        so the integration heals by itself instead of being restarted by the Hub."""
+        loop = asyncio.get_running_loop()
+        lost_at: float | None = None  # when the outage began
+        try:
+            while True:
+                connected_at = loop.time()
+                await self._listen(reader)
+                self._disconnect()
+                # The devices behind it are out of reach now: e.g. controller_did_lose_device for each
+                if lost_at is None or loop.time() - connected_at >= self._STABLE_CONNECTION:
+                    lost_at = loop.time()  # a new outage, else the last one goes on
+                    self._reconnect_delay = self._RECONNECT_DELAY
+                reader = await self._reconnect(lost_at)
+                # Back: e.g. controller_did_connect_device for each that answers again
+        except Exception:  # a bug rather than an outage: the Hub restarts the integration, then gives up on it
+            logger.exception(f"[{self.name}] stopped listening to the server")
+            message = "The connection to the Example server broke unexpectedly."
+            crashed = IntegrationError("crashed", message, is_still_running=False)
+            await self.output.controller_did_encounter_error(self, crashed)
+
+    async def _reconnect(self, lost_at: float) -> asyncio.StreamReader:
+        """Tries again, less and less often, until the server is back. Tells the user only once it was away for a
+        while: a server restarting on purpose (e.g. recreated with new settings) is usually back well before."""
+        loop = asyncio.get_running_loop()
+        is_reported = False
+        while True:
+            # Also before the first try: a drop soon after another one is reported at once
+            if not is_reported and loop.time() - lost_at >= self._UNREACHABLE_AFTER:
+                message = "Lost the connection to the Example server, reconnecting."
+                lost = IntegrationError("server-unreachable", message)
+                await self.output.controller_did_encounter_error(self, lost)
+                is_reported = True
+            await asyncio.sleep(self._reconnect_delay)
+            self._reconnect_delay = min(self._reconnect_delay * 2, self._RECONNECT_DELAY_MAX)
+            try:
+                reader = await self._connect()
+            except OSError as error:
+                self._disconnect()  # a connection it hung up
+                logger.info(f"[{self.name}] the server is not back yet: {error!r}")
+            else:
+                if is_reported:  # the devices work again, though the outage lasts until the connection holds
+                    await self.output.controller_did_resolve_error(self, "server-unreachable")
+                return reader
+
+    async def _listen(self, reader: asyncio.StreamReader):
+        """Reads the server's messages until it closes the connection."""
+        with contextlib.suppress(OSError):
+            while line := await reader.readline():
+                # Turn protocol messages into events here: controller_did_receive_events(...)
+                # Log and skip one you can't take: whatever raises here has the Hub restart the integration.
+                logger.debug(f"[{self.name}] server: {line!r}")
 
     # Hub -> device ---------------------------------------------------------
 
-    async def pair_device(self, discovery: Discovery, credentials: ProvidedCredentials | None) -> None:
+    async def pair_device(self, discovery: Discovery, credentials: ProvidedCredentials | None):
         # Establish a session with the device, then report success to the Hub:
-        # await self.dependencies.output.controller_did_connect_device(self, self.device_uuid(...))
+        # await self.output.controller_did_connect_device(self, self.device_uuid(...))
+        # Keep what the protocol needs across restarts beyond the device database (keys, certificates)
+        # in self.platform.documents_folder(self).
+        # Refuse to finish (and undo it) once stop() ran, also if start() ran again since: the Hub would never save
+        # it. e.g. capture a run token that start() renews when pairing begins, and check it before reporting.
         raise NotImplementedError
 
-    async def unpair(self, device: Device) -> None:
+    async def unpair(self, device: Device):
         raise NotImplementedError
 
-    async def identify(self, device: Device) -> None:
+    async def identify(self, device: Device):
         # Ask the device to blink/beep so the user can locate it.
         raise NotImplementedError
 
-    async def fetch(self, device: Device) -> None:
+    async def fetch(self, device: Device):
         # Refresh the device and its parameters, reporting changes via
-        # self.dependencies.output.controller_did_receive_events(self, [...]).
+        # self.output.controller_did_receive_events(self, [...]).
         raise NotImplementedError
 
-    async def send_command(self, command: DeviceCommand, device: Device, parameter: Parameter) -> None:
+    async def send_command(self, command: DeviceCommand, device: Device, parameter: Parameter):
         # Translate the MajorDom command into a protocol-level write.
         raise NotImplementedError
