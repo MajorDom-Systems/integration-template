@@ -57,8 +57,8 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
     # What the controller connects to beyond the network, and what the user can set. The Hub runs
     # `example_server()`, which the package provides next to it, binds the need to it and hands over
     # its URL in `self.peripherals.endpoint("example")`; settings arrive validated in `self.settings`.
-    # Declare everything external as a Need: radios, Need("ble", ["router"]) (never raw Bluetooth),
-    # Need("mdns", ["zeroconf"]), Need("upnp", ["ssdp"]) and the services you bring.
+    # Declare everything external as a Need: radios, the SDK's typed BLE_ROUTER (never raw Bluetooth), ZEROCONF,
+    # UPNP_SSDP (majordom_integration_sdk.capabilities) and the services you bring.
     # Leave them out if the protocol only uses the network.
     # See https://docs.majordom.io/device-integration/radios and .../settings.
     needs = [Need("example", ["echo"])]
@@ -103,8 +103,8 @@ class ExampleController(AbstractController[Device, Parameter, "ExampleController
         # e.g. async with self.platform.device_repository(self) as repository: paired = await repository.get_all()
         # Then report every paired device that answers: the Hub marked them all unavailable when the integration
         # stopped. e.g. await self.output.controller_did_connect_device(self, device.id)
-        # e.g. with Need("mdns", ["zeroconf"]) in `needs`:
-        # self._cancel_zeroconf = self.peripherals.instance("mdns").register(self, {"_example._tcp.local."})
+        # e.g. with ZEROCONF in `needs`:
+        # self._cancel_zeroconf = self.peripherals.instance(ZEROCONF).register(self, {"_example._tcp.local."})
         reader = await self._connect()  # raising here has the Hub retry start()
         self._keeper = asyncio.create_task(self._stay_connected(reader))
 
