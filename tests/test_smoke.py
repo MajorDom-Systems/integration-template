@@ -7,11 +7,11 @@ prefilled, expected-to-fail controller suite) still has tests to run and stays g
 from integration_template import ExampleController
 
 
-async def test_starts_and_stops(controller: ExampleController) -> None:
+async def test_starts_and_stops(controller: ExampleController):
     await controller.start()
     await controller.stop()
 
 
-async def test_name_and_slug(controller: ExampleController) -> None:
+async def test_name_and_key(controller: ExampleController):
     assert controller.name == "Example"
-    assert controller.name_slug == "example"
+    assert controller.key == "example"
