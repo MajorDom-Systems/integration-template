@@ -12,12 +12,13 @@ the repository only for devices that are already paired, the way the Hub stored 
 integration persist a device itself.
 """
 
+from collections.abc import AsyncIterator
 from typing import Any
 from uuid import uuid4
 
 import pytest
 from majordom_integration_sdk import Platform
-from majordom_integration_sdk.schemas.device import CredentialsType, Device, DeviceState, Discovery
+from majordom_integration_sdk.schemas.device import Device, DeviceState, Discovery
 from majordom_integration_sdk.schemas.parameter import (
     ParameterDataType,
     ParameterRole,
@@ -27,6 +28,7 @@ from majordom_integration_sdk.schemas.parameter import (
 from majordom_integration_sdk.testing import RecordingControllerOutput, build_test_platform
 
 from integration_template import ExampleController
+from integration_template.acme import AcmeClient, AcmeLamp
 
 INTEGRATION = "example"
 
@@ -49,24 +51,18 @@ def output() -> RecordingControllerOutput:
 
 
 @pytest.fixture
-def controller(platform: Platform, output: RecordingControllerOutput) -> ExampleController:
+def virtual_lamp() -> AcmeLamp:
+    """The virtual device: a fake lamp on the other end of `acme.py`, to set up and to check what reached it. Swap it
+    for a fake of your own protocol's device."""
+    return AcmeLamp(serial="AC-1001", address="10.0.0.7")
+
+
+@pytest.fixture
+def controller(platform: Platform, output: RecordingControllerOutput, virtual_lamp: AcmeLamp) -> ExampleController:
     controller = ExampleController(platform)
     controller.output = output
+    controller.acme = AcmeClient([virtual_lamp])
     return controller
-
-
-# A virtual / simulated device — a fake endpoint that speaks your protocol in-process (no
-# hardware, no network) so tests are deterministic and can assert what actually reached the
-# device. Stand one up here and have the controller talk to it (e.g. via a base URL / mock
-# transport injected through the controller). Tests then assert on both the controller's
-# reports (the recording output) and this object's observed state.
-#
-# @pytest.fixture
-# def virtual_device():
-#     dev = VirtualExampleDevice()  # your in-process fake
-#     dev.start()
-#     yield dev
-#     dev.stop()
 
 
 async def _seed(platform: Platform, device: DeviceState):
@@ -76,18 +72,11 @@ async def _seed(platform: Platform, device: DeviceState):
 
 
 @pytest.fixture
-def discovery() -> Discovery:
-    """A sample discovered-but-unpaired device (the controller surfaced this)."""
-    return Discovery(
-        id=uuid4(),
-        integration=INTEGRATION,
-        expected_credentials_options=[CredentialsType.none],
-        transport="wifi",
-        device_manufacturer="ACME",
-        device_name="Example Lamp",
-        device_category=None,
-        device_icon=None,
-    )
+async def discovery(controller: ExampleController) -> AsyncIterator[Discovery]:
+    """A discovered-but-unpaired device, as the started controller surfaced it."""
+    await controller.start()
+    yield next(iter(controller.discoveries.values()))
+    await controller.stop()
 
 
 @pytest.fixture
@@ -106,11 +95,13 @@ def draft(discovery: Discovery) -> DeviceState:
 
 
 @pytest.fixture
-async def device_state(platform: Platform) -> DeviceState:
-    """An already-paired device with one on/off parameter, as the Hub *stores* it (the full
-    state, with parameters). Seeded into the repository."""
+async def device_state(platform: Platform, controller: ExampleController, virtual_lamp: AcmeLamp) -> DeviceState:
+    """An already-paired device with one on/off parameter, as the Hub *stores* it (the full state, with parameters),
+    and the virtual lamp holding the key it was paired with. Seeded into the repository."""
+    virtual_lamp.key = "secret"
+    device_id = uuid4()
     power = ParameterState(
-        id=uuid4(),
+        id=controller.parameter_uuid(device_id, "power"),
         name="Power",
         data_type=ParameterDataType.bool,
         role=ParameterRole.control,
@@ -119,12 +110,13 @@ async def device_state(platform: Platform) -> DeviceState:
         value=True,
     )
     state = DeviceState(
-        id=uuid4(),
+        id=device_id,
         name="Living Room Lamp",
         room_id=uuid4(),
         transport="wifi",
         integration=INTEGRATION,
         manufacturer="ACME",
+        integration_data={"serial": virtual_lamp.serial, "address": virtual_lamp.address, "key": "secret"},
         parameters=[power],
     )
     await _seed(platform, state)
