@@ -16,9 +16,10 @@ integration repo runs it in full, and it is red until you implement the controll
 """
 
 from typing import Any
+from uuid import uuid4
 
 import pytest
-from majordom_integration_sdk import DeviceIdTakenError
+from majordom_integration_sdk import DeviceIdTakenError, DeviceUnreachableError
 from majordom_integration_sdk.schemas.command import DeviceCommand
 from majordom_integration_sdk.schemas.device import Device, DeviceState, Discovery
 from majordom_integration_sdk.schemas.event import DeviceParameterChange
@@ -65,7 +66,8 @@ async def test_pairs_into_the_draft(
 
     # The draft comes back filled with what the controller learned; the user's fields stay.
     assert paired.name == draft.name
-    assert paired.id == controller.device_uuid(virtual_lamp.serial)
+    assert paired.id == draft.id  # the Hub's, never changed
+    assert paired.physical_id == controller.device_uuid(virtual_lamp.serial)
     assert paired.integration_data["key"] == virtual_lamp.key is not None
     assert paired.parameters
     assert paired.available
@@ -82,14 +84,18 @@ async def test_pairing_refuses_an_id_another_record_holds(
     discovery: Discovery,
     draft: DeviceState,
 ):
-    store[controller.device_uuid(virtual_lamp.serial)] = {"name": "Old lamp", "is_paired": False}
+    store[uuid4()] = {
+        "physical_id": str(controller.device_uuid(virtual_lamp.serial)),
+        "name": "Old lamp",
+        "is_paired": False,
+    }
     with pytest.raises(DeviceIdTakenError):
         await controller.pair_device(discovery, draft, credentials=None)
     # Nothing irreversible ran.
     assert virtual_lamp.key is None
 
 
-async def test_failed_pairing_undoes_what_blocks_a_retry(
+async def test_failed_pairing_rolls_back_through_unpair(
     controller: ExampleController,
     output: RecordingControllerOutput,
     store: dict[Any, dict[str, Any]],
@@ -100,14 +106,29 @@ async def test_failed_pairing_undoes_what_blocks_a_retry(
     virtual_lamp.read_fails = True
     with pytest.raises(AcmeError):
         await controller.pair_device(discovery, draft, credentials=None)
-    # The key we set and lost is gone, so a retry finds the lamp as before; nothing was saved or reported.
-    assert virtual_lamp.key is None
+    # Nothing was saved or reported; the draft holds what ran, so the Hub's `unpair(draft)` undoes it.
     assert store == {}
     assert output.connected_devices == []
+    await controller.unpair(Device.model_validate(draft.model_dump()))
+    assert virtual_lamp.key is None
 
     virtual_lamp.read_fails = False
-    paired = await controller.pair_device(discovery, draft, credentials=None)
+    paired = await controller.pair_device(
+        discovery, draft.model_copy(update={"integration_data": None}), credentials=None
+    )
     assert paired.parameters
+
+
+async def test_pairing_is_idempotent(
+    controller: ExampleController, virtual_lamp: AcmeLamp, discovery: Discovery, draft: DeviceState
+):
+    # Pairing again onto what the last attempt left (the lamp keyed, its key in the draft): confirmed, not refused.
+    first = await controller.pair_device(discovery, draft.model_copy(deep=True), credentials=None)
+    again = await controller.pair_device(
+        discovery, draft.model_copy(update={"integration_data": first.integration_data}), credentials=None
+    )
+    assert again.physical_id == first.physical_id
+    assert virtual_lamp.key == first.integration_data["key"]
 
 
 async def test_unpairs(controller: ExampleController, virtual_lamp: AcmeLamp, device: Device):
@@ -120,13 +141,22 @@ async def test_unpairs(controller: ExampleController, virtual_lamp: AcmeLamp, de
     assert virtual_lamp.subscriptions == []
 
 
-async def test_unpair_tolerates_any_stage(controller: ExampleController, virtual_lamp: AcmeLamp, draft: DeviceState):
-    # A record as it is before anything ran (no `integration_data`) and a lamp that is gone: neither raises or waits.
+async def test_unpair_tolerates_any_stage(
+    controller: ExampleController, virtual_lamp: AcmeLamp, device: Device, draft: DeviceState
+):
+    # A draft as it is before anything ran (no `integration_data`), and a second call: neither raises.
     await controller.unpair(Device.model_validate(draft.model_dump()))
+    await controller.unpair(device)
+    await controller.unpair(device)
+    assert virtual_lamp.key is None
+
+
+async def test_unpair_of_an_unreachable_device_raises(
+    controller: ExampleController, virtual_lamp: AcmeLamp, device: Device
+):
     virtual_lamp.online = False
-    await controller.unpair(
-        Device.model_validate(draft.model_dump() | {"integration_data": {"address": "10.0.0.7", "key": "k"}})
-    )
+    with pytest.raises(DeviceUnreachableError):
+        await controller.unpair(device)
 
 
 async def test_fetches_state(
@@ -134,15 +164,15 @@ async def test_fetches_state(
 ):
     virtual_lamp.power = False
     await controller.fetch(device)
-    assert [(event.value, event.device_id) for event in output.events if isinstance(event, DeviceParameterChange)] == [
-        (False, device.id)
-    ]
+    assert [
+        (event.value, event.physical_id) for event in output.events if isinstance(event, DeviceParameterChange)
+    ] == [(False, device.physical_id)]
 
 
 async def test_fetch_is_idempotent(controller: ExampleController, virtual_lamp: AcmeLamp, device: Device):
     await controller.fetch(device)
     await controller.fetch(device)
-    assert virtual_lamp.subscriptions == [str(device.id)]
+    assert virtual_lamp.subscriptions == [str(device.physical_id)]
 
 
 async def test_fetch_of_an_unanswering_device_is_not_a_failure(

@@ -29,8 +29,8 @@ from integration_template.acme import AcmeClient
 # Imports the commented bodies below need:
 # import asyncio
 # import secrets
-# from contextlib import suppress
 #
+# from majordom_integration_sdk import DeviceUnreachableError
 # from majordom_integration_sdk.schemas.device import CredentialsType
 # from majordom_integration_sdk.schemas.event import DeviceParameterChange
 # from majordom_integration_sdk.schemas.parameter import ParameterDataType, ParameterRole, ParameterState
@@ -82,7 +82,7 @@ class ExampleController(AbstractController[Device, Parameter, NoSettings]):
         raise NotImplementedError
         # await self.acme.open()
         # for lamp in await self.acme.scan():
-        #     # A discovery id stays the same for the same device. It is not the final device id: that comes in
+        #     # A discovery id stays the same for the same device. It is not the device's `physical_id`: that comes in
         #     # `pair_device`, from something unique to the device.
         #     discovery = Discovery(
         #         id=self.device_uuid(lamp.address),
@@ -99,7 +99,8 @@ class ExampleController(AbstractController[Device, Parameter, NoSettings]):
         #     await self.output.controller_did_receive_discovery(self, discovery)
         # Real libraries push discoveries later: register a listener here and report `controller_did_receive_discovery`
         # and `controller_did_lose_discovery` from it. Also check the already-paired devices here (`fetch` each) and
-        # report the ones that are gone with `controller_did_lose_device`. Raise when you can't start: it is retried.
+        # report the ones that are gone with `controller_did_lose_device(self, physical_id=...)`.
+        # Raise when you can't start: it is retried.
 
     async def stop(self):
         raise NotImplementedError
@@ -122,55 +123,60 @@ class ExampleController(AbstractController[Device, Parameter, NoSettings]):
         raise NotImplementedError
         # The Hub built `draft` from the user's form and saves what you return. So no device repository in here and no
         # `controller_did_connect_device`, no events: the Hub reports the device after it saved it, then calls `fetch`.
-        # When the device needs credentials the Hub lacks, raise `MissingCredentialsError` before touching it.
+        # When the device needs credentials the Hub lacks, raise `MissingCredentialsError` before touching it. On any
+        # other failure (and when the Hub's save fails) the Hub calls `unpair(draft)` to roll back, so don't undo here.
         #
-        # lamp = await self.acme.connect(self._addresses[discovery.id])
+        # Idempotent, like `fetch`: a retry after a failed or rolled-back attempt must reach a known-good paired state
+        # from whatever the last one left, confirming what is already done instead of refusing it.
         #
-        # The final id comes from a string unique to this device (serial, MAC). A name or an address two devices can
-        # share would give them one id. Check it before anything irreversible: it raises `DeviceIdTakenError` when
-        # another record holds it, and the Hub answers the user with that. Set `draft.id` only after the check: until
-        # then it names the record the user picked, which is not "another" one.
-        # device_id = self.device_uuid(lamp.serial)
-        # await self.check_device_id(device_id, draft)
-        # draft.id = device_id
+        # known_key = (draft.integration_data or {}).get("key")  # set when the user paired onto an existing record
+        # lamp = await self.acme.connect(self._addresses[discovery.id], known_key)
         #
-        # Fill the draft BEFORE each irreversible step, so what you hold always says what ran.
-        # key = secrets.token_hex(16)
+        # `draft.id` is the Hub's: never change it. The `physical_id` is yours, what you look the device up by from now
+        # on: from a string unique to this device (serial, MAC). A name or an address two devices can share would give
+        # them one id. Check it before anything irreversible: it raises `DeviceIdTakenError` when another record holds
+        # it, and the Hub answers the user with that.
+        # physical_id = self.device_uuid(lamp.serial)
+        # await self.check_device_id(physical_id, draft)
+        # draft.physical_id = physical_id
+        #
+        # Fill `integration_data` BEFORE each irreversible step: it is saved with the device and `unpair` rolls back
+        # from it, so what it holds always says what ran. No storage files of your own.
+        # key = known_key or secrets.token_hex(16)
         # draft.integration_data = {"serial": lamp.serial, "address": lamp.address, "key": key}
-        # try:
-        #     await lamp.set_key(key)
-        #     power = ParameterState(
-        #         id=self.parameter_uuid(draft.id, "power"),
-        #         name="Power",
-        #         data_type=ParameterDataType.bool,
-        #         role=ParameterRole.control,
-        #         visibility=ParameterVisibility.user,
-        #         integration_data=None,
-        #         value=(await lamp.read())["power"],
-        #     )
-        #     draft.parameters = [power]
-        #     draft.available = True
-        # except Exception:
-        #     # On a failure undo only what would block a retry: the key we set and now lose would lock us out of the
-        #     # lamp. Keep what a retry reuses (a Wi-Fi join, a bond). `unpair` is not called: it is the user's removal.
-        #     with suppress(AcmeError):
-        #         await lamp.clear_key()
-        #     raise
+        # await lamp.set_key(key)  # Setting the key the lamp already holds confirms it. When yours can't, check first.
+        # power = ParameterState(
+        #     id=self.parameter_uuid(physical_id, "power"),
+        #     name="Power",
+        #     data_type=ParameterDataType.bool,
+        #     role=ParameterRole.control,
+        #     visibility=ParameterVisibility.user,
+        #     integration_data=None,
+        #     value=(await lamp.read())["power"],
+        # )
+        # draft.parameters = [power]
+        # draft.available = True
         # Subscribe in `fetch`, not here: the Hub calls it right after the save.
         # return draft
 
     async def unpair(self, device: Device):
         raise NotImplementedError
-        # The user removed the device. Undo in reverse order of pairing and tolerate any state: a half-filled record
-        # (no `integration_data`), a lamp that is gone or was reset. Never wait for the user, never raise for a lamp
-        # that isn't there. The Hub removes the record itself.
+        # The user removed the device, or the Hub rolls back a failed pairing with the draft as `pair_device` left it.
+        # Undo in reverse order of pairing only what blocks a clean re-pair: the key, which locks out the next pairing
+        # once lost. Harmless leftovers (a Wi-Fi join, a device offered again as a discovery) need no undo. Tolerate
+        # any stage (no `integration_data` yet, a lamp already unkeyed), never wait for the user, and stay safe to call
+        # again. The Hub removes the record itself.
         # data = device.integration_data or {}
         # if "key" not in data:
         #     return
-        # with suppress(AcmeError):
+        # try:
         #     lamp = await self.acme.connect(data["address"], data["key"])
-        #     await lamp.unsubscribe(str(device.id))
+        #     await lamp.unsubscribe(str(device.physical_id))
         #     await lamp.clear_key()
+        # except AcmeError as error:
+        #     # Forget your own state of the device first (nothing here: it all lives in `integration_data`). The user
+        #     # is then offered to forget the device, which needs a manual factory reset to pair again.
+        #     raise DeviceUnreachableError(f"{device.physical_id} is unreachable to clear its key") from error
 
     async def identify(self, device: Device):
         raise NotImplementedError
@@ -185,7 +191,7 @@ class ExampleController(AbstractController[Device, Parameter, NoSettings]):
         # check the device answers, read its values, subscribe only if the subscription is gone (never a second one).
         # Report only what was read.
         # data = device.integration_data
-        # token = str(device.id)
+        # token = str(device.physical_id)
         # try:
         #     async with asyncio.timeout(10):
         #         lamp = await self.acme.connect(data["address"], data["key"])
@@ -195,7 +201,9 @@ class ExampleController(AbstractController[Device, Parameter, NoSettings]):
         # if token not in lamp.subscriptions:
         #     await lamp.subscribe(token)  # A real library takes a callback here, reporting changes as events.
         # change = DeviceParameterChange(
-        #     device_id=device.id, parameter_id=self.parameter_uuid(device.id, "power"), value=values["power"]
+        #     physical_id=device.physical_id,
+        #     parameter_id=self.parameter_uuid(device.physical_id, "power"),
+        #     value=values["power"],
         # )
         # await self.output.controller_did_receive_events(self, [change])
 

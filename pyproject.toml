@@ -20,9 +20,9 @@ classifiers = [
     "Topic :: Home Automation",
     "Programming Language :: Python :: 3",
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.13,<4.0"
 dependencies = [
-    "majordom-integration-sdk (>=0.1.5,<1.0)",
+    "majordom-integration-sdk (>=0.4.0,<1.0)",
 ]
 
 [project.urls]

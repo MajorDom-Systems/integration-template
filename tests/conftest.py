@@ -81,10 +81,12 @@ async def discovery(controller: ExampleController) -> AsyncIterator[Discovery]:
 
 @pytest.fixture
 def draft(discovery: Discovery) -> DeviceState:
-    """The draft the Hub hands to `pair_device`: built from the user's input (name, room), the id of the discovery
-    and no parameters yet. Nothing is stored: the Hub saves what `pair_device` returns."""
+    """The draft the Hub hands to `pair_device`: built from the user's input (name, room), the Hub's own `id`, the
+    discovery's id as a placeholder `physical_id` and no parameters yet. Nothing is stored: the Hub saves what
+    `pair_device` returns."""
     return DeviceState(
-        id=discovery.id,
+        id=uuid4(),
+        physical_id=discovery.id,
         name="Living Room Lamp",
         room_id=uuid4(),
         transport=discovery.transport,
@@ -99,9 +101,9 @@ async def device_state(platform: Platform, controller: ExampleController, virtua
     """An already-paired device with one on/off parameter, as the Hub *stores* it (the full state, with parameters),
     and the virtual lamp holding the key it was paired with. Seeded into the repository."""
     virtual_lamp.key = "secret"
-    device_id = uuid4()
+    physical_id = controller.device_uuid(virtual_lamp.serial)
     power = ParameterState(
-        id=controller.parameter_uuid(device_id, "power"),
+        id=controller.parameter_uuid(physical_id, "power"),
         name="Power",
         data_type=ParameterDataType.bool,
         role=ParameterRole.control,
@@ -110,7 +112,8 @@ async def device_state(platform: Platform, controller: ExampleController, virtua
         value=True,
     )
     state = DeviceState(
-        id=device_id,
+        id=uuid4(),
+        physical_id=physical_id,
         name="Living Room Lamp",
         room_id=uuid4(),
         transport="wifi",
