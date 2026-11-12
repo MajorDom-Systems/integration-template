@@ -12,13 +12,12 @@ the repository only for devices that are already paired, the way the Hub stored 
 integration persist a device itself.
 """
 
-from collections.abc import AsyncIterator
 from typing import Any
 from uuid import uuid4
 
 import pytest
 from majordom_integration_sdk import Platform
-from majordom_integration_sdk.schemas.device import Device, DeviceState, Discovery
+from majordom_integration_sdk.schemas.device import CredentialsType, Device, DeviceState, Discovery
 from majordom_integration_sdk.schemas.parameter import (
     ParameterDataType,
     ParameterRole,
@@ -28,7 +27,6 @@ from majordom_integration_sdk.schemas.parameter import (
 from majordom_integration_sdk.testing import RecordingControllerOutput, build_test_platform
 
 from integration_template import ExampleController
-from integration_template.acme import AcmeClient, AcmeLamp
 
 INTEGRATION = "example"
 
@@ -51,18 +49,23 @@ def output() -> RecordingControllerOutput:
 
 
 @pytest.fixture
-def virtual_lamp() -> AcmeLamp:
-    """The virtual device: a fake lamp on the other end of `acme.py`, to set up and to check what reached it. Swap it
-    for a fake of your own protocol's device."""
-    return AcmeLamp(serial="AC-1001", address="10.0.0.7")
-
-
-@pytest.fixture
-def controller(platform: Platform, output: RecordingControllerOutput, virtual_lamp: AcmeLamp) -> ExampleController:
+def controller(platform: Platform, output: RecordingControllerOutput) -> ExampleController:
     controller = ExampleController(platform)
     controller.output = output
-    controller.acme = AcmeClient([virtual_lamp])
     return controller
+
+
+# A virtual / simulated device: a fake endpoint that speaks your protocol in-process (no hardware, no network), so
+# tests are deterministic and can assert what actually reached the device. Stand one up here and have the controller
+# talk to it (e.g. a mock transport injected into the controller). Tests then assert on both the controller's reports
+# (`output`) and this object's observed state.
+#
+# @pytest.fixture
+# def virtual_device():
+#     device = VirtualExampleDevice()  # your in-process fake
+#     device.start()
+#     yield device
+#     device.stop()
 
 
 async def _seed(platform: Platform, device: DeviceState):
@@ -72,11 +75,18 @@ async def _seed(platform: Platform, device: DeviceState):
 
 
 @pytest.fixture
-async def discovery(controller: ExampleController) -> AsyncIterator[Discovery]:
-    """A discovered-but-unpaired device, as the started controller surfaced it."""
-    await controller.start()
-    yield next(iter(controller.discoveries.values()))
-    await controller.stop()
+def discovery() -> Discovery:
+    """A discovered-but-unpaired device, as the started controller would surface it."""
+    return Discovery(
+        id=uuid4(),
+        integration=INTEGRATION,
+        expected_credentials_options=[CredentialsType.none],
+        transport="wifi",
+        device_manufacturer="Example",
+        device_name="Example device",
+        device_category=None,
+        device_icon=None,
+    )
 
 
 @pytest.fixture
@@ -87,7 +97,7 @@ def draft(discovery: Discovery) -> DeviceState:
     return DeviceState(
         id=uuid4(),
         physical_id=discovery.id,
-        name="Living Room Lamp",
+        name="Living Room Device",
         room_id=uuid4(),
         transport=discovery.transport,
         integration=INTEGRATION,
@@ -97,11 +107,10 @@ def draft(discovery: Discovery) -> DeviceState:
 
 
 @pytest.fixture
-async def device_state(platform: Platform, controller: ExampleController, virtual_lamp: AcmeLamp) -> DeviceState:
-    """An already-paired device with one on/off parameter, as the Hub *stores* it (the full state, with parameters),
-    and the virtual lamp holding the key it was paired with. Seeded into the repository."""
-    virtual_lamp.key = "secret"
-    physical_id = controller.device_uuid(virtual_lamp.serial)
+async def device_state(platform: Platform, controller: ExampleController) -> DeviceState:
+    """An already-paired device with one on/off parameter, as the Hub *stores* it (the full state, with parameters).
+    Seeded into the repository. TODO: pair your virtual device to match it."""
+    physical_id = controller.device_uuid("EX-1001")  # the virtual device's serial or MAC
     power = ParameterState(
         id=controller.parameter_uuid(physical_id, "power"),
         name="Power",
@@ -114,12 +123,12 @@ async def device_state(platform: Platform, controller: ExampleController, virtua
     state = DeviceState(
         id=uuid4(),
         physical_id=physical_id,
-        name="Living Room Lamp",
+        name="Living Room Device",
         room_id=uuid4(),
         transport="wifi",
         integration=INTEGRATION,
-        manufacturer="ACME",
-        integration_data={"serial": virtual_lamp.serial, "address": virtual_lamp.address, "key": "secret"},
+        manufacturer="Example",
+        integration_data={},  # TODO: what your `pair_device` keeps for the virtual device
         parameters=[power],
     )
     await _seed(platform, state)
