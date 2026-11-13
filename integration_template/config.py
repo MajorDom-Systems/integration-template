@@ -1,7 +1,7 @@
 """What the integration brings along: the server its protocol needs (e.g. zwave-js-server, a matter.js server).
 
 Delete this file and its use in `__init__.py` when your controller talks to devices directly. Worked example:
-https://docs.majordom.io/integrations/server-example
+https://docs.majordom.io/integrations/peripherals
 """
 
 from majordom_integration_sdk import Endpoint, Service
