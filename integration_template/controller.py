@@ -136,12 +136,12 @@ class ExampleController(
         #   other record holds this device already, and raises `DeviceIdTakenError` when one does.
         # - Fill `draft.integration_data` BEFORE each irreversible step: it is saved with the device and `unpair`
         #   rolls back from it. No storage files of your own.
-        # - Fill `parameters` (ids from `self.parameter_uuid(draft.physical_id, ...)`) and `available`, return `draft`.
+        # - Set `available` and return `draft`. Leave `parameters` empty: `fetch` reads them right after the save.
         # - Just raise on failure: on any failure but `DeviceIdTakenError`, and when its save fails, the Hub calls
         #   `unpair(draft)`, which undoes the partial pairing.
         # - Idempotent: a retry after a failed or rolled-back attempt reaches a known-good paired state from whatever
         #   the last one left, confirming what is already done instead of refusing it.
-        # - Don't read values or subscribe here: the Hub calls `fetch` for that right after the save.
+        # - Don't map parameters, read values or subscribe here: the Hub calls `fetch` for that right after the save.
         raise NotImplementedError
 
     async def unpair(self, device: ExampleDevice):
@@ -158,11 +158,15 @@ class ExampleController(
         # Make the device blink or beep so the user can find it.
         raise NotImplementedError
 
-    async def fetch(self, device: ExampleDevice):
-        # Called after pairing, on a manual refresh and to revive an unavailable device, so it must be safe to repeat:
-        # - check the device answers and read its values, reported as events by `physical_id`;
+    async def fetch(self, device: ExampleDevice) -> ExampleDeviceState | None:
+        # Called right after pairing, on a manual refresh and to revive an unavailable device, so it must be safe to
+        # repeat:
+        # - read the whole device and return it: `ExampleDeviceState(**device.model_dump(), parameters=[...])` with
+        #   every parameter (ids from `self.parameter_uuid(device.physical_id, ...)`) and its current value, and
+        #   `available`. The Hub compares it with what it stored; report none of it as events: those are for changes
+        #   the device starts itself;
         # - subscribe only if the subscription is gone, never a second one;
-        # - finish in bounded time; a sleeping or offline device is not a failure: report nothing.
+        # - finish in bounded time; return `None` when the device doesn't answer (sleeping, offline): not a failure.
         raise NotImplementedError
 
     async def send_command(self, command: DeviceCommand, device: ExampleDevice, parameter: ExampleParameter):
