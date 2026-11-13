@@ -163,8 +163,8 @@ class ExampleController(
         # repeat:
         # - read the whole device and return it: `ExampleDeviceState(**device.model_dump(), parameters=[...])` with
         #   every parameter (ids from `self.parameter_uuid(device.physical_id, ...)`) and its current value, and
-        #   `available`. The Hub compares it with what it stored; report none of it as events: those are for changes
-        #   the device starts itself;
+        #   `available`. The Hub saves it and tells what changed. Report none of it as events: those are for changes the
+        #   device starts itself;
         # - subscribe only if the subscription is gone, never a second one;
         # - finish in bounded time; return `None` when the device doesn't answer (sleeping, offline): not a failure.
         raise NotImplementedError
