@@ -17,7 +17,7 @@ from uuid import uuid4
 
 import pytest
 from majordom_integration_sdk import Platform
-from majordom_integration_sdk.schemas.device import CredentialsType, Device, DeviceState, Discovery
+from majordom_integration_sdk.schemas.device import CredentialsType, DeviceState, Discovery
 from majordom_integration_sdk.schemas.parameter import (
     ParameterDataType,
     ParameterRole,
@@ -27,6 +27,7 @@ from majordom_integration_sdk.schemas.parameter import (
 from majordom_integration_sdk.testing import RecordingControllerOutput, build_test_platform
 
 from integration_template import ExampleController
+from integration_template.controller import ExampleDevice, ExampleDeviceState, ExampleParameter
 
 INTEGRATION = "example"
 
@@ -90,11 +91,11 @@ def discovery() -> Discovery:
 
 
 @pytest.fixture
-def draft(discovery: Discovery) -> DeviceState:
+def draft(discovery: Discovery) -> ExampleDeviceState:
     """The draft the Hub hands to `pair_device`: built from the user's input (name, room), the Hub's own `id`, the
     discovery's id as a placeholder `physical_id` and no parameters yet. Nothing is stored: the Hub saves what
     `pair_device` returns."""
-    return DeviceState(
+    return ExampleDeviceState(
         id=uuid4(),
         physical_id=discovery.id,
         name="Living Room Device",
@@ -107,7 +108,7 @@ def draft(discovery: Discovery) -> DeviceState:
 
 
 @pytest.fixture
-async def device_state(platform: Platform, controller: ExampleController) -> DeviceState:
+async def device_state(platform: Platform, controller: ExampleController) -> ExampleDeviceState:
     """An already-paired device with one on/off parameter, as the Hub *stores* it (the full state, with parameters).
     Seeded into the repository. TODO: pair your virtual device to match it."""
     physical_id = controller.device_uuid("EX-1001")  # the virtual device's serial or MAC
@@ -117,10 +118,10 @@ async def device_state(platform: Platform, controller: ExampleController) -> Dev
         data_type=ParameterDataType.bool,
         role=ParameterRole.control,
         visibility=ParameterVisibility.user,
-        integration_data=None,
+        integration_data={},  # TODO: what your `pair_device` keeps for this parameter
         value=True,
     )
-    state = DeviceState(
+    state = ExampleDeviceState(
         id=uuid4(),
         physical_id=physical_id,
         name="Living Room Device",
@@ -136,13 +137,13 @@ async def device_state(platform: Platform, controller: ExampleController) -> Dev
 
 
 @pytest.fixture
-def device(device_state: DeviceState) -> Device:
-    """The device as the Hub *passes* it to `fetch`/`identify`/`unpair`/`send_command` — a
-    `Device` (info + integration_data), without the parameter list."""
-    return Device.model_validate(device_state.model_dump())
+def device(device_state: ExampleDeviceState) -> ExampleDevice:
+    """The device as the Hub *passes* it to `fetch`/`identify`/`unpair`/`send_command` — an
+    `ExampleDevice` (info + integration_data), without the parameter list."""
+    return ExampleDevice.model_validate(device_state.model_dump())
 
 
 @pytest.fixture
-def parameter(device_state: DeviceState) -> ParameterState:
+def parameter(device_state: ExampleDeviceState) -> ExampleParameter:
     """The target parameter for `send_command`, paired with `device`."""
-    return device_state.parameters[0]
+    return ExampleParameter.model_validate(device_state.parameters[0].model_dump())

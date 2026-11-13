@@ -1,12 +1,13 @@
 """A MajorDom integration controller skeleton to fill.
 
-Every method the Hub calls is here with its real signature, a placeholder body and, above it, a checklist of what the
-SDK expects from it. Replace each placeholder with your protocol's calls and fill the matching test in
-`tests/test_controller.py`: the tests fail until each method is done.
+A controller puts one IoT protocol behind the single standard facade every MajorDom integration shares. It works on
+its own: as a library in any Python app, from the SDK's standalone CLI, or inside the MajorDom Hub. Whoever drives it
+calls the methods below and hears back through `self.output` (a `ControllerOutput`): discoveries, devices that
+connected or were lost, events.
 
-A Controller bridges one external protocol into MajorDom. The Hub instantiates it with the `Platform` and calls the
-methods below; the controller reports back through `self.output` (a `ControllerOutput`): discoveries, devices that
-connected or were lost, events. Full guide: https://docs.majordom.io/device-integration
+Every method is here with its real signature, a placeholder body and a checklist of what the SDK expects from it.
+Replace each placeholder with your protocol's calls and fill the matching test in `tests/test_controller.py`: the
+tests fail until each method is done. Full guide: https://docs.majordom.io/device-integration
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from majordom_integration_sdk import NoSettings, Platform
 from majordom_integration_sdk.controller import AbstractController
 from majordom_integration_sdk.schemas.command import DeviceCommand
 from majordom_integration_sdk.schemas.device import Device, DeviceState, Discovery, Parameter, ProvidedCredentials
+from pydantic import BaseModel
 
 # Output methods to call (ids are keyword-only: integrations pass `physical_id=`):
 # await self.output.controller_did_receive_discovery(self, discovery)
@@ -24,13 +26,33 @@ from majordom_integration_sdk.schemas.device import Device, DeviceState, Discove
 # await self.output.controller_did_lose_discovery(self, discovery_id)
 # await self.output.controller_did_connect_device(self, physical_id=physical_id)
 # await self.output.controller_did_lose_device(self, physical_id=physical_id)
-# await self.output.controller_did_receive_events(self, events)  # e.g. DeviceParameterChange(physical_id=..., ...)
+# await self.output.controller_did_receive_events(self, [
+#     DeviceParameterChange(physical_id=physical_id, parameter_id=self.parameter_uuid(physical_id, "..."), value=...),
+# ])
 
 
-class ExampleController(AbstractController[Device, Parameter, NoSettings]):
+# Your own data, typed: the controller gets every device and parameter already parsed into these classes.
+
+
+class ExampleDeviceData(BaseModel):
+    """What you keep about a paired device in `integration_data`: an address, a key set on it, …"""
+
+
+class ExampleParameterData(BaseModel):
+    """What you keep about a parameter in its `integration_data`: the protocol's attribute or endpoint, …"""
+
+
+class ExampleDevice(Device[ExampleDeviceData]): ...
+
+
+class ExampleDeviceState(DeviceState[ExampleDeviceData, ExampleParameterData]): ...
+
+
+class ExampleParameter(Parameter[ExampleParameterData]): ...
+
+
+class ExampleController(AbstractController[ExampleDevice, ExampleParameter, NoSettings, ExampleDeviceState]):
     """Bridges the Example protocol into MajorDom."""
-
-    name = "Example"
 
     def __init__(self, platform: Platform, *, settings: NoSettings | None = None):
         super().__init__(platform, settings=settings)
@@ -41,22 +63,19 @@ class ExampleController(AbstractController[Device, Parameter, NoSettings]):
         # Return the cached snapshot only, never scan here.
         return self._discoveries
 
-    # Types the Hub validates into -------------------------------------------
-
-    # The defaults are fine until you keep typed `integration_data` or parameter data: then return your subclass
-    # (`class MyDevice(Device[MyData])`). With nothing to change, delete all three overrides.
+    # Your types, which every call's arguments are parsed into ------------------
 
     @property
-    def device_type(self) -> type[Device]:
-        return Device  # what `unpair`, `fetch`, `identify` and `send_command` are given
+    def device_type(self) -> type[ExampleDevice]:
+        return ExampleDevice  # what `unpair`, `fetch`, `identify` and `send_command` are given
 
     @property
-    def device_state_type(self) -> type[DeviceState]:
-        return DeviceState  # what `pair_device` is given as its draft and returns
+    def device_state_type(self) -> type[ExampleDeviceState]:
+        return ExampleDeviceState  # what `pair_device` is given as its draft and returns
 
     @property
-    def parameter_type(self) -> type[Parameter]:
-        return Parameter  # what `send_command` is given
+    def parameter_type(self) -> type[ExampleParameter]:
+        return ExampleParameter  # what `send_command` is given
 
     # Lifecycle -------------------------------------------------------------
 
@@ -80,46 +99,48 @@ class ExampleController(AbstractController[Device, Parameter, NoSettings]):
         raise NotImplementedError
 
     async def pair_device(
-        self, discovery: Discovery, draft: DeviceState, credentials: ProvidedCredentials | None
-    ) -> DeviceState:
+        self, discovery: Discovery, draft: ExampleDeviceState, credentials: ProvidedCredentials | None
+    ) -> ExampleDeviceState:
         # - The Hub built `draft` from the user's form and saves what you return: no device repository here, and no
         #   `controller_did_connect_device` or events. The Hub reports the device after the save, then calls `fetch`.
         # - Raise `MissingCredentialsError` before touching the device when it needs credentials the Hub lacks.
-        # - `draft.id` is the Hub's: never change it. Set `draft.physical_id = self.device_uuid(...)` from a string
-        #   unique to the device (serial, MAC), then `await self.check_device_id(draft.physical_id, draft)` before
-        #   anything irreversible: it raises `DeviceIdTakenError` when another record holds it.
+        # - `draft.id` is the Hub's: never change it. Set `draft.physical_id = self.device_uuid(...)` from a string or
+        #   bytes unique to the device (serial, MAC). Build it in one place (a single id-making method), never
+        #   assembled anew at each call site.
+        # - Then `await self.check_device_id(draft.physical_id, draft)` before anything irreversible: it confirms no
+        #   other record holds this device already, and raises `DeviceIdTakenError` when one does.
         # - Fill `draft.integration_data` BEFORE each irreversible step: it is saved with the device and `unpair`
         #   rolls back from it. No storage files of your own.
         # - Fill `parameters` (ids from `self.parameter_uuid(draft.physical_id, ...)`) and `available`, return `draft`.
-        # - On any failure but `DeviceIdTakenError`, and when its save fails, the Hub calls `unpair(draft)` to roll
-        #   back: don't undo here.
-        # - Idempotent, like `fetch`: a retry after a failed or rolled-back attempt reaches a known-good paired state
-        #   from whatever the last one left, confirming what is already done instead of refusing it.
-        # - Subscribe in `fetch`, not here.
+        # - Just raise on failure: on any failure but `DeviceIdTakenError`, and when its save fails, the Hub calls
+        #   `unpair(draft)`, which undoes the partial pairing.
+        # - Idempotent: a retry after a failed or rolled-back attempt reaches a known-good paired state from whatever
+        #   the last one left, confirming what is already done instead of refusing it.
+        # - Don't read values or subscribe here: the Hub calls `fetch` for that right after the save.
         raise NotImplementedError
 
-    async def unpair(self, device: Device):
+    async def unpair(self, device: ExampleDevice):
         # - The user's removal, and the Hub's rollback of a failed pairing (with the draft as `pair_device` left it).
-        # - Undo in reverse order of pairing only what blocks a clean re-pair (a key set on the device, a pairing the
-        #   device holds). Harmless leftovers (a node left on the network, offered again as a discovery) need no undo.
+        # - Undo everything pairing did, in reverse order: a key set on the device, the pairing it holds, its place on
+        #   the network.
         # - Tolerate any stage (no `integration_data` yet, a device already reset), never wait for the user, best
-        #   effort within the Hub's 30 s, and safe to call again. The Hub removes the record itself.
-        # - When the device can't be reached to undo its pairing: forget your own state of it, then raise
-        #   `DeviceUnreachableError`.
+        #   effort within the Hub's 30 s, and safe to call again.
+        # - Talk to the device only: the Hub alone decides whether to delete the record and its `integration_data`.
+        #   When the device can't be reached, raise `DeviceUnreachableError` and change nothing else.
         raise NotImplementedError
 
-    async def identify(self, device: Device):
+    async def identify(self, device: ExampleDevice):
         # Make the device blink or beep so the user can find it.
         raise NotImplementedError
 
-    async def fetch(self, device: Device):
+    async def fetch(self, device: ExampleDevice):
         # Called after pairing, on a manual refresh and to revive an unavailable device, so it must be safe to repeat:
         # - check the device answers and read its values, reported as events by `physical_id`;
         # - subscribe only if the subscription is gone, never a second one;
         # - finish in bounded time; a sleeping or offline device is not a failure: report nothing.
         raise NotImplementedError
 
-    async def send_command(self, command: DeviceCommand, device: Device, parameter: Parameter):
+    async def send_command(self, command: DeviceCommand, device: ExampleDevice, parameter: ExampleParameter):
         # Translate the MajorDom command into a protocol write; `parameter.id` tells which parameter it is. Report the
         # new value yourself only when the device doesn't announce it through its subscription.
         raise NotImplementedError

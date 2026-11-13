@@ -22,10 +22,11 @@ import pytest
 from majordom_integration_sdk import DeviceIdTakenError, DeviceUnreachableError
 from majordom_integration_sdk.schemas.command import DeviceCommand
 from majordom_integration_sdk.schemas.device import Device, DeviceState, Discovery
-from majordom_integration_sdk.schemas.parameter import Parameter, ParameterState
+from majordom_integration_sdk.schemas.parameter import Parameter
 from majordom_integration_sdk.testing import RecordingControllerOutput
 
 from integration_template import ExampleController
+from integration_template.controller import ExampleDevice, ExampleDeviceState, ExampleParameter
 
 
 def test_declares_its_types(controller: ExampleController):
@@ -45,7 +46,7 @@ async def test_pairs_into_the_draft(
     output: RecordingControllerOutput,
     store: dict[Any, dict[str, Any]],
     discovery: Discovery,
-    draft: DeviceState,
+    draft: ExampleDeviceState,
 ):
     paired = await controller.pair_device(discovery, draft, credentials=None)
 
@@ -63,7 +64,7 @@ async def test_pairs_into_the_draft(
 
 
 async def test_pairing_refuses_an_id_another_record_holds(
-    controller: ExampleController, store: dict[Any, dict[str, Any]], discovery: Discovery, draft: DeviceState
+    controller: ExampleController, store: dict[Any, dict[str, Any]], discovery: Discovery, draft: ExampleDeviceState
 ):
     # TODO: use the virtual device's serial or MAC, as your `pair_device` builds the physical id from it.
     store[uuid4()] = {"physical_id": str(controller.device_uuid("EX-1001")), "name": "Old device", "is_paired": False}
@@ -73,14 +74,14 @@ async def test_pairing_refuses_an_id_another_record_holds(
 
 
 async def test_failed_pairing_rolls_back_through_unpair(
-    controller: ExampleController, store: dict[Any, dict[str, Any]], discovery: Discovery, draft: DeviceState
+    controller: ExampleController, store: dict[Any, dict[str, Any]], discovery: Discovery, draft: ExampleDeviceState
 ):
     # TODO: make the virtual device fail mid-pairing (after the first irreversible step), and expect its error.
     with pytest.raises(Exception):  # noqa: B017  TODO: your protocol's error
         await controller.pair_device(discovery, draft, credentials=None)
     assert store == {}
     # The Hub rolls back with the draft as `pair_device` left it.
-    await controller.unpair(Device.model_validate(draft.model_dump()))
+    await controller.unpair(ExampleDevice.model_validate(draft.model_dump()))
     # TODO: assert the virtual device is back to unpaired, then let it succeed: a retry with a fresh draft pairs.
     paired = await controller.pair_device(
         discovery, draft.model_copy(update={"integration_data": None}), credentials=None
@@ -88,7 +89,7 @@ async def test_failed_pairing_rolls_back_through_unpair(
     assert paired.parameters
 
 
-async def test_pairing_is_idempotent(controller: ExampleController, discovery: Discovery, draft: DeviceState):
+async def test_pairing_is_idempotent(controller: ExampleController, discovery: Discovery, draft: ExampleDeviceState):
     # A retry that finds the device as the last attempt left it confirms it instead of refusing.
     first = await controller.pair_device(discovery, draft.model_copy(deep=True), credentials=None)
     again = await controller.pair_device(
@@ -98,51 +99,53 @@ async def test_pairing_is_idempotent(controller: ExampleController, discovery: D
     # TODO: assert the virtual device holds one pairing, the one in `again.integration_data`.
 
 
-async def test_unpairs(controller: ExampleController, device: Device):
+async def test_unpairs(controller: ExampleController, device: ExampleDevice):
     await controller.unpair(device)
     # TODO: assert the virtual device forgot the pairing and its subscription, free for the next pairing.
 
 
-async def test_unpair_tolerates_any_stage(controller: ExampleController, device: Device, draft: DeviceState):
+async def test_unpair_tolerates_any_stage(
+    controller: ExampleController, device: ExampleDevice, draft: ExampleDeviceState
+):
     # A draft as it is before anything ran (no `integration_data`), and a second call: neither raises.
-    await controller.unpair(Device.model_validate(draft.model_dump()))
+    await controller.unpair(ExampleDevice.model_validate(draft.model_dump()))
     await controller.unpair(device)
     await controller.unpair(device)
 
 
-async def test_unpair_of_an_unreachable_device_raises(controller: ExampleController, device: Device):
+async def test_unpair_of_an_unreachable_device_raises(controller: ExampleController, device: ExampleDevice):
     # TODO: take the virtual device offline first.
     with pytest.raises(DeviceUnreachableError):
         await controller.unpair(device)
 
 
-async def test_fetches_state(controller: ExampleController, output: RecordingControllerOutput, device: Device):
+async def test_fetches_state(controller: ExampleController, output: RecordingControllerOutput, device: ExampleDevice):
     await controller.fetch(device)
     # TODO: set a known state on the virtual device first, then assert `output.events` carry exactly that state
     #   for `device.physical_id`, not stale or default values.
 
 
-async def test_fetch_is_idempotent(controller: ExampleController, device: Device):
+async def test_fetch_is_idempotent(controller: ExampleController, device: ExampleDevice):
     await controller.fetch(device)
     await controller.fetch(device)
     # TODO: assert the virtual device holds exactly one subscription.
 
 
 async def test_fetch_of_an_unanswering_device_is_not_a_failure(
-    controller: ExampleController, output: RecordingControllerOutput, device: Device
+    controller: ExampleController, output: RecordingControllerOutput, device: ExampleDevice
 ):
     # TODO: take the virtual device offline first.
     await controller.fetch(device)
     assert output.events == []
 
 
-async def test_sends_a_command(controller: ExampleController, device: Device, parameter: ParameterState):
+async def test_sends_a_command(controller: ExampleController, device: ExampleDevice, parameter: ExampleParameter):
     command = DeviceCommand(device_id=device.id, parameter_id=parameter.id, value=False)
     await controller.send_command(command, device, parameter)
     # TODO: assert the virtual device received this exact write and its state changed to `value` (read it back).
     #   A no-op that silently succeeds must fail this test.
 
 
-async def test_identifies(controller: ExampleController, device: Device):
+async def test_identifies(controller: ExampleController, device: ExampleDevice):
     await controller.identify(device)
     # TODO: assert the virtual device recorded an identify request.
