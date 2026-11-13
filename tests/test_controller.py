@@ -149,3 +149,10 @@ async def test_sends_a_command(controller: ExampleController, device: ExampleDev
 async def test_identifies(controller: ExampleController, device: ExampleDevice):
     await controller.identify(device)
     # TODO: assert the virtual device recorded an identify request.
+
+
+async def test_forgets_its_discoveries_when_it_stops(controller: ExampleController, discovery: Discovery):
+    await controller.start()
+    controller._discoveries[discovery.id] = discovery  # as your discovery listener caches it
+    await controller.stop()
+    assert controller.discoveries == {}  # the device may be gone or paired elsewhere by the next start

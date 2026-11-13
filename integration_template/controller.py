@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from majordom_integration_sdk import NoSettings, Platform
+from majordom_integration_sdk import Need, Platform
 from majordom_integration_sdk.controller import AbstractController
 from majordom_integration_sdk.schemas.command import DeviceCommand
 from majordom_integration_sdk.schemas.device import Device, DeviceState, Discovery, Parameter, ProvidedCredentials
@@ -29,6 +29,8 @@ from pydantic import BaseModel
 # await self.output.controller_did_receive_events(self, [
 #     DeviceParameterChange(physical_id=physical_id, parameter_id=self.parameter_uuid(physical_id, "..."), value=...),
 # ])
+# await self.output.controller_did_encounter_error(self, IntegrationError("server-unreachable", "..."))
+# await self.output.controller_did_resolve_error(self, "server-unreachable")
 
 
 # Your own data, typed: the controller gets every device and parameter already parsed into these classes.
@@ -51,10 +53,20 @@ class ExampleDeviceState(DeviceState[ExampleDeviceData, ExampleParameterData]): 
 class ExampleParameter(Parameter[ExampleParameterData]): ...
 
 
-class ExampleController(AbstractController[ExampleDevice, ExampleParameter, NoSettings, ExampleDeviceState]):
+class ExampleController(
+    AbstractController[ExampleDevice, ExampleParameter, "ExampleController.Settings", ExampleDeviceState]
+):
     """Bridges the Example protocol into MajorDom."""
 
-    def __init__(self, platform: Platform, *, settings: NoSettings | None = None):
+    # Everything external beyond the network: the server from `config.py`, radios, the SDK's BLE_ROUTER, ZEROCONF,
+    # UPNP_SSDP. Delete the ones you don't use, and the list when the protocol only uses the network.
+    needs = [Need("example", ["example"])]
+
+    class Settings(BaseModel):
+        """What the user can set on the controller, validated into `self.settings`. Give every field a default: the
+        controller is built with them before the user can enter any. Use `NoSettings` instead when there are none."""
+
+    def __init__(self, platform: Platform, *, settings: Settings | None = None):
         super().__init__(platform, settings=settings)
         self._discoveries: dict[UUID, Discovery] = {}
 
@@ -80,16 +92,29 @@ class ExampleController(AbstractController[ExampleDevice, ExampleParameter, NoSe
     # Lifecycle -------------------------------------------------------------
 
     async def start(self):
+        # - Connect to your server through `self.peripherals.endpoint("example").url`, never a URL of your own: the
+        #   port may differ. Raise when you can't: `start` is retried.
+        # - Once connected, stay connected by yourself: reconnect with a growing delay when the server goes away, and
+        #   report it with `controller_did_encounter_error` only when it stays away, resolving it when it is back.
         # - Open your protocol's client and register discovery listeners; report discoveries as they come and go.
         # - A discovery id stays the same for the same device; it is not the device's `physical_id`.
         # - Check the already-paired devices (`fetch` each); report the gone ones with
         #   `controller_did_lose_device(self, physical_id=...)`.
-        # - Raise when you can't start: it is retried.
         ...
 
     async def stop(self):
-        # Also called after a half-done `start`, and a `start` may follow: cancel tasks, close connections.
+        # Also called after a half-done `start`, and a `start` may follow: cancel tasks, close connections, clear
+        # `self._discoveries` (they are heard anew after the next start).
         ...
+
+    # Return True when applied in place, False to have the runtime restart the controller.
+
+    async def settings_did_change(self, before: Settings) -> bool:
+        return False
+
+    async def platform_facts_did_change(self, before: Platform) -> bool:
+        # e.g. return False when the region changed and your server needs it on connect
+        return True
 
     # Hub -> device ---------------------------------------------------------
 

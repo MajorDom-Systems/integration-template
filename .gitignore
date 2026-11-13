@@ -40,6 +40,9 @@ venv/
 .ruff_cache/
 .ropeproject
 
+# MajorDom dev runner (run_controller / run_cli): its settings and keys
+.majordom-dev/
+
 # mkdocs (only relevant if you kept mkdocs.yml + docs/)
 /site
 .cache/
