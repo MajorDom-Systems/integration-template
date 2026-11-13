@@ -2,200 +2,148 @@
 
 conftest.py is auto-discovered by pytest — no import needed.
 
-The fixtures wire the integration's Controller with the SDK's test doubles (a recording
-`ControllerOutput`, an in-memory device repository) and a virtual server in place of the one
-the integration brings, run it under the SDK's runtime, and build sample
-`Discovery`/`DeviceState` objects, so tests can drive the controller exactly as the Hub
-would — without a running Hub.
+The fixtures wire the integration's Controller with the SDK's test doubles (a test `Platform` with an in-memory
+device repository, and a recording `ControllerOutput`) and build sample `Discovery`/`DeviceState` objects, so tests
+can drive the controller exactly as the Hub would — without a running Hub.
 
-**Device persistence is the Hub's core business logic, not the integration's.** The Hub
-creates and stores device rows (name/room mapping, id assignment, the provisional→final id
-reconciliation on pairing); an integration only reads through the injected repository and
-writes parameter *state*. These fixtures therefore seed the repository the way the Hub
-would, so the controller sees realistic state — the tests never make the integration
-persist a device itself.
+**Device persistence is the Hub's core business logic, not the integration's.** The Hub builds the draft a pairing
+fills, saves what `pair_device` returns, and only then reports the device connected. These fixtures therefore seed
+the repository only for devices that are already paired, the way the Hub stored them; the tests never make the
+integration persist a device itself.
 """
 
-from collections.abc import AsyncIterator
-from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pytest
-from majordom_integration_sdk import Device, Discovery, Endpoint, Peripherals, Platform
-from majordom_integration_sdk.runtime import PeripheralState, Pinned, Runtime
-from majordom_integration_sdk.schemas.device import CredentialsType, DeviceState
+from majordom_integration_sdk import Platform
+from majordom_integration_sdk.schemas.device import CredentialsType, DeviceState, Discovery
 from majordom_integration_sdk.schemas.parameter import (
     ParameterDataType,
     ParameterRole,
     ParameterState,
     ParameterVisibility,
 )
-from majordom_integration_sdk.testing import RecordingControllerOutput, RecordingRuntimeOutput, build_test_platform
+from majordom_integration_sdk.testing import RecordingControllerOutput, build_test_platform
 
 from integration_template import ExampleController
-from tests.support import until
-from tests.virtual_server import VirtualServer
+from integration_template.controller import ExampleDevice, ExampleDeviceState, ExampleParameter
 
-INTEGRATION = ExampleController.slug()  # its key, which the Hub scopes its devices by
-
-
-@pytest.fixture
-async def server() -> AsyncIterator[VirtualServer]:
-    server = VirtualServer()
-    await server.start()
-    yield server
-    await server.stop()
+INTEGRATION = "example"
 
 
 @pytest.fixture
-def platform(tmp_path: Path) -> Platform:
-    """The SDK's test platform (in-memory device repository, the host's facts), as the Hub gives it to every
-    integration."""
-    return build_test_platform(tmp_path / "documents")  # the folders go with the test
+def store() -> dict[Any, dict[str, Any]]:
+    """Every device record the Hub keeps, by id. Seed it to give `check_device_id` a record to collide with."""
+    return {}
+
+
+@pytest.fixture
+def platform(store: dict[Any, dict[str, Any]]) -> Platform:
+    """SDK-provided test platform: in-memory device repository over `store`, and a working `check_device_id`."""
+    return build_test_platform(store=store)
 
 
 @pytest.fixture
 def output() -> RecordingControllerOutput:
-    """Records what the controller reports, where the Hub would hear it."""
     return RecordingControllerOutput()
 
 
 @pytest.fixture
-def bound(server: VirtualServer) -> Peripherals:
-    """The controller's need bound to the virtual server, as the Hub binds it to `example_server()`."""
-    return Peripherals({"example": Endpoint("example", "echo", f"tcp://127.0.0.1:{server.port}")})
-
-
-@pytest.fixture
-def controller(platform: Platform, bound: Peripherals, output: RecordingControllerOutput) -> ExampleController:
+def controller(platform: Platform, output: RecordingControllerOutput) -> ExampleController:
     controller = ExampleController(platform)
-    controller.peripherals = bound  # bound by hand, as in library mode
     controller.output = output
     return controller
 
 
-@pytest.fixture
-def statuses() -> RecordingRuntimeOutput:
-    """Records the statuses the runtime gives the controller, where the Hub would show them."""
-    return RecordingRuntimeOutput()
-
-
-@pytest.fixture
-async def runtime(
-    tmp_path: Path,
-    controller: ExampleController,
-    bound: Peripherals,
-    output: RecordingControllerOutput,
-    statuses: RecordingRuntimeOutput,
-) -> AsyncIterator[Runtime]:
-    """The controller run as the Hub runs it, once it runs: its need pinned to the virtual server (the Hub runs
-    `example_server()` instead), what it reports going to `output`, its statuses to `statuses`."""
-    runtime = Runtime(
-        tmp_path,
-        [Pinned(bound.endpoint("example")), controller],
-        platform=controller.platform,
-        controller_output=output,
-        output=statuses,
-        retry_delays=(0.01, 0.01, 0.01),  # the Hub waits 5, 30, 120 s
-    )
-    await runtime.start()
-    await until(lambda: runtime.status(controller).state == PeripheralState.RUNNING)
-    yield runtime
-    await runtime.stop()
-
-
-# A virtual / simulated device — a fake endpoint that speaks your protocol in-process (no
-# hardware, no network) so tests are deterministic and can assert what actually reached the
-# device. Stand one up here and have the controller talk to it (e.g. via a base URL / mock
-# transport injected through the controller). Tests then assert on both the controller's
-# reports (output) and this object's observed state. `VirtualServer` (tests/virtual_server.py)
-# is the worked example: it stands in for the server and records what reached it.
+# A virtual / simulated device: a fake endpoint that speaks your protocol in-process (no hardware, no network), so
+# tests are deterministic and can assert what actually reached the device. Stand one up here and have the controller
+# talk to it (e.g. a mock transport injected into the controller). Tests then assert on both the controller's reports
+# (`output`) and this object's observed state.
 #
 # @pytest.fixture
 # def virtual_device():
-#     dev = VirtualExampleDevice()  # your in-process fake
-#     dev.start()
-#     yield dev
-#     dev.stop()
+#     device = VirtualExampleDevice()  # your in-process fake
+#     device.start()
+#     yield device
+#     device.stop()
 
 
-async def _seed(controller: ExampleController, device: DeviceState):
+async def _seed(platform: Platform, device: DeviceState):
     """Persist a device the way the Hub would, before handing control to the integration."""
-    async with controller.platform.device_repository(controller) as repo:
+    async with platform.make_device_repository(INTEGRATION) as repo:
         await repo.save(device)
 
 
 @pytest.fixture
 def discovery() -> Discovery:
-    """A sample discovered-but-unpaired device (the controller surfaced this)."""
+    """A discovered-but-unpaired device, as the started controller would surface it."""
     return Discovery(
         id=uuid4(),
         integration=INTEGRATION,
         expected_credentials_options=[CredentialsType.none],
         transport="wifi",
-        device_manufacturer="ACME",
-        device_name="Example Lamp",
+        device_manufacturer="Example",
+        device_name="Example device",
         device_category=None,
         device_icon=None,
     )
 
 
 @pytest.fixture
-async def provisional_device(controller: ExampleController, discovery: Discovery) -> DeviceState:
-    """The device as it exists when the Hub calls `pair_device`.
-
-    Before pairing, the Hub has already created the row from the user's input: name and room
-    mapped, and its id set to the discovery's (still provisional) id — but no parameters yet;
-    the controller discovers/maps those while pairing. After pairing the controller reports
-    the real device id and the Hub reconciles the row. We seed the repository to match.
-    """
-    device = DeviceState(
-        id=discovery.id,  # provisional id == discovery id, until pairing assigns the real one
-        name="Living Room Lamp",  # mapped by the Hub from the user's input
+def draft(discovery: Discovery) -> ExampleDeviceState:
+    """The draft the Hub hands to `pair_device`: built from the user's input (name, room), the Hub's own `id`, the
+    discovery's id as a placeholder `physical_id` and no parameters yet. Nothing is stored: the Hub saves what
+    `pair_device` returns."""
+    return ExampleDeviceState(
+        id=uuid4(),
+        physical_id=discovery.id,
+        name="Living Room Device",
         room_id=uuid4(),
         transport=discovery.transport,
         integration=INTEGRATION,
         manufacturer=discovery.device_manufacturer,
         parameters=[],
     )
-    await _seed(controller, device)
-    return device
 
 
 @pytest.fixture
-async def device_state(controller: ExampleController) -> DeviceState:
-    """An already-paired device with one on/off parameter, as the Hub *stores* it (the full
-    state, with parameters). Seeded into the repository."""
+async def device_state(platform: Platform, controller: ExampleController) -> ExampleDeviceState:
+    """An already-paired device with one on/off parameter, as the Hub *stores* it (the full state, with parameters).
+    Seeded into the repository. TODO: pair your virtual device to match it."""
+    physical_id = controller.device_uuid("EX-1001")  # the virtual device's serial or MAC
     power = ParameterState(
-        id=uuid4(),
+        id=controller.parameter_uuid(physical_id, "power"),
         name="Power",
         data_type=ParameterDataType.bool,
         role=ParameterRole.control,
         visibility=ParameterVisibility.user,
-        integration_data=None,
+        integration_data={},  # TODO: what your `pair_device` keeps for this parameter
         value=True,
     )
-    state = DeviceState(
+    state = ExampleDeviceState(
         id=uuid4(),
-        name="Living Room Lamp",
+        physical_id=physical_id,
+        name="Living Room Device",
         room_id=uuid4(),
         transport="wifi",
         integration=INTEGRATION,
-        manufacturer="ACME",
+        manufacturer="Example",
+        integration_data={},  # TODO: what your `pair_device` keeps for the virtual device
         parameters=[power],
     )
-    await _seed(controller, state)
+    await _seed(platform, state)
     return state
 
 
 @pytest.fixture
-def device(device_state: DeviceState) -> Device:
-    """The device as the Hub *passes* it to `fetch`/`identify`/`unpair`/`send_command` — a
-    `Device` (info + integration_data), without the parameter list."""
-    return Device.model_validate(device_state.model_dump())
+def device(device_state: ExampleDeviceState) -> ExampleDevice:
+    """The device as the Hub *passes* it to `fetch`/`identify`/`unpair`/`send_command` — an
+    `ExampleDevice` (info + integration_data), without the parameter list."""
+    return ExampleDevice.model_validate(device_state.model_dump())
 
 
 @pytest.fixture
-def parameter(device_state: DeviceState) -> ParameterState:
+def parameter(device_state: ExampleDeviceState) -> ExampleParameter:
     """The target parameter for `send_command`, paired with `device`."""
-    return device_state.parameters[0]
+    return ExampleParameter.model_validate(device_state.parameters[0].model_dump())

@@ -1,3 +1,17 @@
+<!-- MajorDom Project Banner -->
+<a href="https://majordom.io" target="_blank">
+  <picture>
+    <source
+      media="(prefers-color-scheme: dark)"
+      srcset="https://markparker.me/banners/majordom-dark.webp"
+    />
+    <img
+      alt="Part of MajorDom — the next-gen smart home"
+      src="https://markparker.me/banners/majordom-light.webp"
+    />
+  </picture>
+</a>
+
 <!-- ┌───────────────────────────────────────────────────────────────────────────┐
      │ USING THIS TEMPLATE — delete everything down to the "DELETE ABOVE" line      │
      │ once your integration repo is set up. What's left below is your own README.  │

@@ -1,37 +1,32 @@
-"""What the integration brings along: its server."""
+"""What the integration brings along: the server its protocol needs (e.g. zwave-js-server, a matter.js server).
+
+Delete this file and its use in `__init__.py` when your controller talks to devices directly. Worked example:
+https://docs.majordom.io/integrations/server-example
+"""
 
 from majordom_integration_sdk import Endpoint, Service
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-# EXAMPLE: a tiny TCP echo server standing in for your protocol's server. Replace it; pin yours by digest.
-IMAGE = "istio/tcp-echo-server:1.3@sha256:782259608d5ce934e1a07ce4a3f2664934b6806d50430fd20b7bf429ea500272"
+IMAGE = "TODO/your-server:1.0@sha256:TODO"  # pin by digest
 
 
 class ServerSettings(BaseModel):
-    """What the user can set on the server. They go into its compose, so a change recreates its container: the
-    controller loses its connection and reconnects."""
-
-    # Give every field a default: the server is built with them before the user can enter any
-    greeting: str = Field(
-        "hello",
-        min_length=1,  # the server needs one: an empty value would leave the argument out
-        title="Greeting",
-        description="What the server puts before every line it echoes.",
-    )
+    """What the user can set on the server: each field goes into its compose, so a change recreates the container.
+    Give every field a default: the server is built with them before the user can enter any."""
 
 
 def example_server() -> Service[ServerSettings]:
     """A new one per call: the runtime keeps its state on the instance it runs."""
     return Service(
         "example-server",
-        provides=[Endpoint("example", "echo", "tcp://127.0.0.1:{ports.api}")],
+        # What it offers the controller: the controller's `Need("example", ["example"])` binds to it
+        provides=[Endpoint("example", "example", "tcp://127.0.0.1:{ports.api}")],
         settings=ServerSettings,
         ports={"api": 9000},  # preferred: the runtime picks another one when it's taken
         compose={
             "image": IMAGE,
-            # Make yours listen on 127.0.0.1 only (e.g. zwave-js-server's `--host 127.0.0.1`): the Hub reaches it over
-            # loopback, and nothing guards it on the LAN. This echo server can't choose its address.
             "network_mode": "host",
-            "command": ["{ports.api}", "{settings.greeting}"],  # listens on the port the runtime picked
+            # Make it listen on 127.0.0.1 and on the port the runtime picked: nothing guards it on the LAN
+            "command": ["TODO", "{ports.api}"],
         },
     )
