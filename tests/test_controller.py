@@ -54,7 +54,7 @@ async def test_pairs_into_the_draft(
     assert paired.name == draft.name
     assert paired.id == draft.id
     assert paired.physical_id != discovery.id  # TODO: == controller.device_uuid(<the virtual device's serial>)
-    assert paired.parameters
+    assert paired.parameters == []  # read by `fetch`
     assert paired.available
     # Nothing is saved or reported during pairing: the Hub does both after it writes the draft.
     assert store == {}
@@ -120,9 +120,13 @@ async def test_unpair_of_an_unreachable_device_raises(controller: ExampleControl
 
 
 async def test_fetches_state(controller: ExampleController, output: RecordingControllerOutput, device: ExampleDevice):
-    await controller.fetch(device)
-    # TODO: set a known state on the virtual device first, then assert `output.events` carry exactly that state
-    #   for `device.physical_id`, not stale or default values.
+    # TODO: set a known state on the virtual device first.
+    read = await controller.fetch(device)
+    assert read is not None
+    assert (read.id, read.physical_id) == (device.id, device.physical_id)
+    assert read.parameters  # TODO: assert exactly the virtual device's parameters and values
+    assert read.available
+    assert output.events == []  # what `fetch` read is returned, not reported
 
 
 async def test_fetch_is_idempotent(controller: ExampleController, device: ExampleDevice):
@@ -135,7 +139,7 @@ async def test_fetch_of_an_unanswering_device_is_not_a_failure(
     controller: ExampleController, output: RecordingControllerOutput, device: ExampleDevice
 ):
     # TODO: take the virtual device offline first.
-    await controller.fetch(device)
+    assert await controller.fetch(device) is None
     assert output.events == []
 
 
